@@ -18,6 +18,9 @@ export function Login(props: LoginProps) {
         labels={props.labels}
         className={props.className}
         style={props.style}
+        getCaptchaToken={props.getCaptchaToken}
+        turnstileSiteKey={props.turnstileSiteKey}
+        captcha={props.captcha}
         onBack={() => setForgot(false)}
       />
     );

@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { AuthLabels } from '../labels';
 import type { OAuthProvider } from '../oauth/providerIds';
 
@@ -94,6 +94,14 @@ export interface AuthComponentProps {
    * Login asks for it only after auth-service answers `Captcha is required`.
    */
   getCaptchaToken?: () => Promise<string | undefined>;
+  /**
+   * Cloudflare Turnstile site key. When set, the form renders the widget above the submit button
+   * and sends its token. Signup and password reset always send it. Login sends it only after
+   * auth-service answers `Captcha is required`.
+   */
+  turnstileSiteKey?: string;
+  /** Rendered in the form, above the submit button. Ignored when `turnstileSiteKey` is set. */
+  captcha?: ReactNode;
 }
 
 export interface LoginProps extends AuthComponentProps {
@@ -118,6 +126,10 @@ export interface ForgotPasswordProps {
   title?: string;
   submitButtonText?: string;
   getCaptchaToken?: () => Promise<string | undefined>;
+  /** Cloudflare Turnstile site key. Renders the widget and sends its token with the reset request. */
+  turnstileSiteKey?: string;
+  /** Rendered above the submit button. Ignored when `turnstileSiteKey` is set. */
+  captcha?: ReactNode;
 }
 
 export interface ResetPasswordProps {

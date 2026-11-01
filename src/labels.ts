@@ -30,6 +30,8 @@ export interface AuthLabels {
   confirmEmail: string;
   accountExists: string;
   genericError: string;
+  completeCaptcha: string;
+  captchaLoadFailed: string;
   oauthError: string;
   callbackPendingTitle: string;
   callbackPendingMessage: string;
@@ -81,6 +83,8 @@ export const defaultLabels: AuthLabels = {
   confirmEmail: 'Confirm your email before signing in.',
   accountExists: 'An account with these details already exists',
   genericError: 'Something went wrong. Please try again.',
+  completeCaptcha: 'Complete the captcha',
+  captchaLoadFailed: 'Captcha could not be loaded.',
   oauthError: 'OAuth authorization failed',
   callbackPendingTitle: 'Finishing up…',
   callbackPendingMessage: 'Completing sign-in with your provider',

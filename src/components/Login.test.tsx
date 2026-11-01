@@ -204,6 +204,29 @@ describe('Login', () => {
     );
   });
 
+  it('sends the captcha token with a password reset request', async () => {
+    const user = userEvent.setup();
+    const getCaptchaToken = vi.fn().mockResolvedValue('turnstile-token');
+    post.mockResolvedValue({ status: 204, data: '' });
+    renderLogin({ getCaptchaToken, linkOrigin: 'https://grammarbar.com' });
+
+    await user.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    await user.type(screen.getByRole('textbox', { name: /email/i }), 'ada@example.com');
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('If this account exists, we sent a link.');
+    expect(getCaptchaToken).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith(
+      'http://localhost:8100/account/forgot-password',
+      {
+        email: 'ada@example.com',
+        linkOrigin: 'https://grammarbar.com',
+        captchaToken: 'turnstile-token',
+      },
+      expect.any(Object),
+    );
+  });
+
   it('shows a rate-limit message and can return to sign in', async () => {
     const user = userEvent.setup();
     post.mockRejectedValue({
@@ -266,6 +289,18 @@ describe('Login', () => {
       },
       expect.any(Object),
     );
+  });
+
+  it('shows the captcha above the submit button and keeps it on the reset form', async () => {
+    const user = userEvent.setup();
+    renderLogin({ captcha: <p>Prove you are human</p> });
+
+    expect(screen.getByText('Prove you are human')).toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: 'Sign in' });
+    expect(submit.previousElementSibling).toHaveTextContent('Prove you are human');
+
+    await user.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    expect(screen.getByText('Prove you are human')).toBeInTheDocument();
   });
 
   it('hides the forgot-password link when disabled', () => {

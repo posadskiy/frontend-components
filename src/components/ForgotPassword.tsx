@@ -5,6 +5,7 @@ import { mapAuthError } from '../errors';
 import { resolveLabels } from '../labels';
 import { accountEndpoint, resolveAccountOrigin, resolveLinkOrigin } from '../linkOrigin';
 import type { ForgotPasswordProps } from '../types';
+import { useTurnstile } from '../captcha/useTurnstile';
 import { isEmailAddress } from '../validate';
 
 export function ForgotPassword({
@@ -20,8 +21,13 @@ export function ForgotPassword({
   title,
   submitButtonText,
   getCaptchaToken,
+  turnstileSiteKey,
+  captcha,
 }: ForgotPasswordProps) {
   const labels = resolveLabels(labelOverrides);
+  const turnstile = useTurnstile(turnstileSiteKey, labels.completeCaptcha, labels.captchaLoadFailed);
+  const resolveCaptchaToken = turnstile.getCaptchaToken ?? getCaptchaToken;
+  const captchaField = turnstile.widget ?? captcha;
   const errorId = useId();
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -62,7 +68,7 @@ export function ForgotPassword({
 
     try {
       const linkOrigin = resolveLinkOrigin(linkOriginProp);
-      const captchaToken = getCaptchaToken ? await getCaptchaToken() : undefined;
+      const captchaToken = resolveCaptchaToken ? await resolveCaptchaToken() : undefined;
       if (authApi?.forgotPassword) {
         await authApi.forgotPassword(trimmed, linkOrigin);
       } else {
@@ -128,6 +134,8 @@ export function ForgotPassword({
                 setEmailError(null);
               }}
             />
+
+            {captchaField}
 
             <Button type="submit" loading={submitting} fullWidth mt="xl">
               {submitButtonText ?? labels.forgotPasswordSubmit}

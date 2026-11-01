@@ -8,6 +8,7 @@ import { browserRegion } from '../region';
 import { resolveProviders } from '../oauth/resolveProviders';
 import type { AuthResponse, LoginProps, RegisterProps, RegisterResponse } from '../types';
 import { isAuthResponse, isEmailAddress, isRegisterResponse, passwordIssue } from '../validate';
+import { useTurnstile } from '../captcha/useTurnstile';
 import { OAuthButtons } from './OAuthButtons';
 import { useOAuthAction } from './useOAuthAction';
 
@@ -40,9 +41,14 @@ export function CredentialsForm(props: CredentialsFormProps) {
     submitButtonText,
     linkOrigin: linkOriginProp,
     getCaptchaToken,
+    turnstileSiteKey,
+    captcha,
   } = props;
 
   const labels = resolveLabels(labelOverrides);
+  const turnstile = useTurnstile(turnstileSiteKey, labels.completeCaptcha, labels.captchaLoadFailed);
+  const resolveCaptchaToken = turnstile.getCaptchaToken ?? getCaptchaToken;
+  const captchaField = turnstile.widget ?? captcha;
   const errorId = useId();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -155,8 +161,8 @@ export function CredentialsForm(props: CredentialsFormProps) {
         try {
           response = await login();
         } catch (error) {
-          if (!getCaptchaToken || !captchaIsRequired(error)) throw error;
-          const captchaToken = await getCaptchaToken();
+          if (!resolveCaptchaToken || !captchaIsRequired(error)) throw error;
+          const captchaToken = await resolveCaptchaToken();
           if (!captchaToken) throw error;
           response = await login(captchaToken);
         }
@@ -168,7 +174,7 @@ export function CredentialsForm(props: CredentialsFormProps) {
           throw new Error('Either apiUrl or authApi.register must be provided');
         }
         const linkOrigin = resolveLinkOrigin(linkOriginProp);
-        const captchaToken = getCaptchaToken ? await getCaptchaToken() : undefined;
+        const captchaToken = resolveCaptchaToken ? await resolveCaptchaToken() : undefined;
         const region = browserRegion();
         const payload = {
           email: trimmedEmail,
@@ -301,6 +307,8 @@ export function CredentialsForm(props: CredentialsFormProps) {
               </Anchor>
             </Text>
           )}
+
+          {captchaField}
 
           <Button type="submit" loading={submitting} disabled={oauth.activeProvider !== null} fullWidth mt="xl">
             {submitButtonText ?? (mode === 'login' ? 'Sign in' : 'Register')}

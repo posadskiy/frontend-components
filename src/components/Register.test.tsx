@@ -122,4 +122,36 @@ describe('Register', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('linkOrigin must be a site origin, such as https://grammarbar.com');
     expect(post).not.toHaveBeenCalled();
   });
+
+  it('sends the turnstile token with signup', async () => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({ status: 201, data: { emailVerified: false } });
+    window.turnstile = {
+      render: (_element, options) => {
+        (options.callback as (token: string) => void)('turnstile-token');
+        return 'widget';
+      },
+      remove: () => undefined,
+      reset: () => undefined,
+    };
+
+    render(
+      <MantineProvider>
+        <Register apiUrl="http://localhost:8095/signup" turnstileSiteKey="site-key" />
+      </MantineProvider>,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: /email/i }), 'ada@example.com');
+    await user.type(screen.getByLabelText(/^password/i), 'secret12ab');
+    await user.type(screen.getByLabelText(/confirm password/i), 'secret12ab');
+    await user.click(screen.getByRole('button', { name: 'Register' }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(post).toHaveBeenCalledWith(
+      'http://localhost:8095/signup',
+      expect.objectContaining({ email: 'ada@example.com', captchaToken: 'turnstile-token' }),
+      expect.any(Object),
+    );
+    delete window.turnstile;
+  });
 });
