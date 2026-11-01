@@ -1,6 +1,6 @@
 {
   "name": "user-component-react",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "React component for user information management",
   "type": "module",
   "main": "./dist/index.js",
