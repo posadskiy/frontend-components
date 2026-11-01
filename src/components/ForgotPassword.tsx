@@ -70,7 +70,7 @@ export function ForgotPassword({
       const linkOrigin = resolveLinkOrigin(linkOriginProp);
       const captchaToken = resolveCaptchaToken ? await resolveCaptchaToken() : undefined;
       if (authApi?.forgotPassword) {
-        await authApi.forgotPassword(trimmed, linkOrigin);
+        await authApi.forgotPassword(trimmed, linkOrigin, captchaToken);
       } else {
         const origin = resolveAccountOrigin(accountApiUrl, apiUrl);
         await axios.post(

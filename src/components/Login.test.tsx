@@ -204,6 +204,27 @@ describe('Login', () => {
     );
   });
 
+  it('keeps an auth service prefix on the reset request', async () => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({ status: 204, data: '' });
+    renderLogin({
+      apiUrl: 'https://api.posadskiy.com/auth/login',
+      accountApiUrl: 'https://api.posadskiy.com/auth',
+      linkOrigin: 'https://grammarbar.com',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    await user.type(screen.getByRole('textbox', { name: /email/i }), 'ada@example.com');
+    await user.click(screen.getByRole('button', { name: 'Send reset link' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent('If this account exists, we sent a link.');
+    expect(post).toHaveBeenCalledWith(
+      'https://api.posadskiy.com/auth/account/forgot-password',
+      { email: 'ada@example.com', linkOrigin: 'https://grammarbar.com' },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
   it('sends the captcha token with a password reset request', async () => {
     const user = userEvent.setup();
     const getCaptchaToken = vi.fn().mockResolvedValue('turnstile-token');

@@ -54,7 +54,7 @@ export interface AuthApi {
     linkOrigin: string,
     region?: { locale?: string; timeZone?: string },
   ) => Promise<RegisterResponse>;
-  forgotPassword?: (email: string, linkOrigin: string) => Promise<void>;
+  forgotPassword?: (email: string, linkOrigin: string, captchaToken?: string) => Promise<void>;
   resetPassword?: (token: string, password: string) => Promise<void>;
 }
 
@@ -85,8 +85,8 @@ export interface AuthComponentProps {
    */
   linkOrigin?: string;
   /**
-   * Origin that serves `/account/forgot-password` and `/account/reset-password`.
-   * Defaults to the origin of `apiUrl`.
+   * Base URL for `/account/forgot-password` and `/account/reset-password`.
+   * Defaults to `apiUrl`. A trailing `/login` or `/signup` is removed. A prefix such as `/auth` stays.
    */
   accountApiUrl?: string;
   /**

@@ -106,7 +106,7 @@ Mount this on the URL you passed as `oauthReturnTo`. The auth host redirects the
 
 ### Forgot password
 
-The login card includes “Forgot password?”. That form posts `{ email, linkOrigin }` to `${accountApiUrl}/account/forgot-password`. `accountApiUrl` defaults to the origin of `apiUrl`, so `http://localhost:8100/login` calls `http://localhost:8100/account/forgot-password`. An unknown email is also 204. The screen always shows “If this account exists, we sent a link.” Too many tries is 429 and shows a rate-limit message. Set `showForgotPassword={false}` to hide the link.
+The login card includes “Forgot password?”. That form posts `{ email, linkOrigin, captchaToken? }` to `${accountApiUrl}/account/forgot-password`. `accountApiUrl` defaults to `apiUrl` with a trailing `/login` or `/signup` removed, so `http://localhost:8100/login` calls `http://localhost:8100/account/forgot-password` and `https://api.posadskiy.com/auth` calls `https://api.posadskiy.com/auth/account/forgot-password`. An unknown email is also 204. The screen always shows “If this account exists, we sent a link.” Too many tries is 429 and shows a rate-limit message. Set `showForgotPassword={false}` to hide the link.
 
 ### Reset password
 

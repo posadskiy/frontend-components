@@ -17,7 +17,10 @@ export function resolveLinkOrigin(explicit?: string): string {
   return url.origin;
 }
 
-/** Origin for `/account/*`. An explicit account URL wins; otherwise the origin of `apiUrl` is used. */
+/**
+ * Base URL for `/account/*`. An explicit account URL wins; otherwise `apiUrl` is used.
+ * A trailing `/login` or `/signup` is removed. A service prefix such as `/auth` stays.
+ */
 export function resolveAccountOrigin(accountApiUrl?: string, apiUrl?: string): string {
   const source = accountApiUrl?.trim() || apiUrl?.trim();
   if (!source) {
@@ -35,7 +38,8 @@ export function resolveAccountOrigin(accountApiUrl?: string, apiUrl?: string): s
     throw new Error('Account API URL must use HTTP or HTTPS');
   }
 
-  return url.origin;
+  const path = url.pathname.replace(/\/+$/, '').replace(/\/(login|signup)$/, '');
+  return `${url.origin}${path === '/' ? '' : path}`;
 }
 
 export function accountEndpoint(origin: string, path: '/account/forgot-password' | '/account/reset-password'): string {

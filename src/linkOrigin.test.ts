@@ -23,9 +23,14 @@ describe('resolveLinkOrigin', () => {
 });
 
 describe('resolveAccountOrigin', () => {
-  it('uses the account origin, or the origin of the login URL', () => {
+  it('drops a trailing login or signup path and keeps a service prefix', () => {
     expect(resolveAccountOrigin('http://localhost:8100/login')).toBe('http://localhost:8100');
-    expect(resolveAccountOrigin(undefined, 'http://localhost:8100/login')).toBe('http://localhost:8100');
+    expect(resolveAccountOrigin(undefined, 'http://localhost:8100/signup')).toBe('http://localhost:8100');
+    expect(resolveAccountOrigin('https://api.posadskiy.com/auth')).toBe('https://api.posadskiy.com/auth');
+    expect(resolveAccountOrigin('https://api.posadskiy.com/auth/login')).toBe('https://api.posadskiy.com/auth');
+    expect(resolveAccountOrigin(undefined, 'https://api.posadskiy.com/auth/signup/')).toBe(
+      'https://api.posadskiy.com/auth',
+    );
   });
 });
 
