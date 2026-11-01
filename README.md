@@ -56,7 +56,7 @@ function App() {
 }
 ```
 
-Password login posts `{ email, password }` to `apiUrl` and expects `{ access_token, expires_in, userId? }`. Hold `access_token` in memory. A refresh token, if you use one, belongs in an httpOnly cookie set by your backend, not in browser storage. Login succeeds while `emailVerified` is false. The access token claim that records that state is `email_verified`. This package does not read the claim, and it does not render a verify-email page.
+Password login posts `{ email, password, linkOrigin }` to `apiUrl` with credentials, and expects `{ access_token, expires_in }`. Hold `access_token` in memory. auth-service keeps the refresh token in an httpOnly cookie for browser requests and omits `refresh_token` from the JSON. This package sends `withCredentials` so the browser stores that cookie, and it drops `refresh_token` if a response still contains one. Unverified accounts cannot sign in. Mount `VerifyEmail` on the confirmation link (`?token=`) and `ConfirmEmailChange` on the email-change link. Wrap the application in `AccountProvider` from `@posadskiy/account-client` and pass that client as `accountClient` on `Login` and `OAuthCallback` when those screens should adopt the session. `SessionList` and `PasskeyManager` take `accountApiUrl` and the access token you already hold.
 
 Pass `turnstileSiteKey` to render a Cloudflare Turnstile widget above the submit button. Signup and password reset send its token as `captchaToken` on every submit. Login sends it only after auth-service answers `Captcha is required`. `captcha` and `getCaptchaToken` still work when you supply your own widget. A site key replaces both.
 
@@ -87,7 +87,7 @@ OAuth does not derive its base URL from `apiUrl`. Pass `oauthApiUrl`. A provider
 
 ### OAuth callback
 
-Mount this on the URL you passed as `oauthReturnTo`. The auth host redirects there with `?code=` after it has checked state. The component posts `{ code, codeVerifier }` to `${oauthApiUrl}/oauth2/finalize` and expects `{ access_token, refresh_token, user_id }`.
+Mount this on the URL you passed as `oauthReturnTo`. The auth host redirects there with `?code=` after it has checked state. The component posts `{ code, codeVerifier }` to `${oauthApiUrl}/oauth2/finalize` with credentials and expects `{ access_token, user_id }`. A browser response has no `refresh_token`.
 
 ```tsx
 <OAuthCallback

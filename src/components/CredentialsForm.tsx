@@ -7,7 +7,7 @@ import { resolveLinkOrigin } from '../linkOrigin';
 import { browserRegion } from '../region';
 import { resolveProviders } from '../oauth/resolveProviders';
 import type { AuthResponse, LoginProps, RegisterProps, RegisterResponse } from '../types';
-import { isAuthResponse, isEmailAddress, isRegisterResponse, passwordIssue } from '../validate';
+import { isAuthResponse, isEmailAddress, isRegisterResponse, passwordIssue, withoutRefreshToken } from '../validate';
 import { useTurnstile } from '../captcha/useTurnstile';
 import { OAuthButtons } from './OAuthButtons';
 import { useOAuthAction } from './useOAuthAction';
@@ -17,6 +17,7 @@ type CredentialsFormProps =
   | (RegisterProps & { mode: 'register' });
 
 export function CredentialsForm(props: CredentialsFormProps) {
+  const account = props.mode === 'login' ? props.accountClient : undefined;
   const {
     mode,
     apiUrl,
@@ -154,7 +155,10 @@ export function CredentialsForm(props: CredentialsFormProps) {
           return authApi?.login
             ? authApi.login(payload.email, payload.password, payload.linkOrigin, captchaToken)
             : (
-                await axios.post<AuthResponse>(apiUrl as string, payload, { signal: controller.signal })
+                await axios.post<AuthResponse>(apiUrl as string, payload, {
+                  signal: controller.signal,
+                  withCredentials: true,
+                })
               ).data;
         };
         let response: AuthResponse;
@@ -168,7 +172,14 @@ export function CredentialsForm(props: CredentialsFormProps) {
         }
         if (!mountedRef.current) return;
         if (!isAuthResponse(response)) throw new Error(labels.genericError);
-        props.onSuccess?.(response);
+        const session = withoutRefreshToken(response);
+        const record = response as AuthResponse & { user_id?: string };
+        account?.session.adopt(
+          session.access_token,
+          session.expires_in,
+          record.user_id ?? session.userId ?? null,
+        );
+        props.onSuccess?.(session);
       } else {
         if (!authApi?.register && !apiUrl) {
           throw new Error('Either apiUrl or authApi.register must be provided');
@@ -186,7 +197,10 @@ export function CredentialsForm(props: CredentialsFormProps) {
         const response = authApi?.register
           ? await authApi.register(payload.email, payload.password, payload.linkOrigin, region)
           : (
-              await axios.post<RegisterResponse>(apiUrl as string, payload, { signal: controller.signal })
+              await axios.post<RegisterResponse>(apiUrl as string, payload, {
+                signal: controller.signal,
+                withCredentials: true,
+              })
             ).data;
         if (!mountedRef.current) return;
         if (!isRegisterResponse(response)) throw new Error(labels.genericError);

@@ -6,6 +6,7 @@ import { resolveLabels, type AuthLabels } from '../labels';
 import { navigation, safeAppPath, stripOAuthQuery } from '../navigation';
 import { subscribeFinalize } from '../oauth/finalize';
 import type { OAuthTokenResponse } from '../types';
+import type { AccountClient } from '@posadskiy/account-client';
 
 export interface OAuthCallbackProps {
   oauthApiUrl: string;
@@ -13,6 +14,8 @@ export interface OAuthCallbackProps {
   onError: (error: Error) => void;
   onContinue?: () => void;
   returnPath?: string;
+  /** When set, a successful callback stores the access token on this client. */
+  accountClient?: AccountClient;
   labels?: Partial<AuthLabels>;
   className?: string;
   style?: React.CSSProperties;
@@ -24,6 +27,7 @@ export function OAuthCallback({
   onError,
   onContinue,
   returnPath,
+  accountClient,
   labels: labelOverrides,
   className,
   style,
@@ -36,12 +40,14 @@ export function OAuthCallback({
   const labelsRef = useRef(labels);
   const returnPathRef = useRef(returnPath);
   const onContinueRef = useRef(onContinue);
+  const accountRef = useRef(accountClient);
 
   onSuccessRef.current = onSuccess;
   onErrorRef.current = onError;
   labelsRef.current = labels;
   returnPathRef.current = returnPath;
   onContinueRef.current = onContinue;
+  accountRef.current = accountClient;
 
   useEffect(() => {
     const currentLabels = labelsRef.current;
@@ -64,6 +70,11 @@ export function OAuthCallback({
         if (!active) return;
         setStatus('success');
         setMessage(labelsRef.current.callbackSuccessMessage);
+        accountRef.current?.session.adopt(
+          data.access_token,
+          typeof data.expires_in === 'number' ? data.expires_in : null,
+          data.user_id,
+        );
         onSuccessRef.current(data);
         navigation.replacePath(safeAppPath(returnPathRef.current) ?? stripOAuthQuery(window.location.href));
       },

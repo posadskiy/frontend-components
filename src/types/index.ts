@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import type { AccountClient } from '@posadskiy/account-client';
 import type { AuthLabels } from '../labels';
 import type { OAuthProvider } from '../oauth/providerIds';
 
@@ -37,7 +38,9 @@ export interface ResetPasswordRequest {
 
 export interface OAuthTokenResponse {
   access_token: string;
-  refresh_token: string;
+  expires_in?: number;
+  /** Present only for a native client. Browser responses omit it; the cookie is the credential. */
+  refresh_token?: string;
   user_id: string;
 }
 
@@ -105,6 +108,8 @@ export interface AuthComponentProps {
 }
 
 export interface LoginProps extends AuthComponentProps {
+  /** When set, a successful password sign-in stores the access token on this client. */
+  accountClient?: AccountClient;
   onSuccess?: (response: AuthResponse) => void;
   showRegisterLink?: boolean;
   onSwitchToRegister?: () => void;
