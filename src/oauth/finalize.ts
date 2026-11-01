@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { OAuthTokenResponse } from '../types';
-import { isOAuthTokenResponse } from '../validate';
+import { isOAuthTokenResponse, withoutRefreshToken } from '../validate';
 import { clearPkceVerifier, readPkceVerifier } from './pkce';
 
 type Inflight = {
@@ -25,14 +25,14 @@ export function subscribeFinalize(oauthApiUrl: string, code: string): {
       .post<OAuthTokenResponse>(
         `${base}/oauth2/finalize`,
         { code, codeVerifier: readPkceVerifier() },
-        { signal: controller.signal },
+        { signal: controller.signal, withCredentials: true },
       )
       .then((response) => {
         clearPkceVerifier();
         if (!isOAuthTokenResponse(response.data)) {
           throw new Error('The auth service returned an unexpected response.');
         }
-        return response.data;
+        return withoutRefreshToken(response.data);
       });
 
     entry = { controller, promise, subscribers: 0 };

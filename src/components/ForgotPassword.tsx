@@ -76,7 +76,7 @@ export function ForgotPassword({
         await axios.post(
           accountEndpoint(origin, '/account/forgot-password'),
           { email: trimmed, linkOrigin, ...(captchaToken ? { captchaToken } : {}) },
-          { signal: controller.signal },
+          { signal: controller.signal, withCredentials: true },
         );
       }
       if (!mountedRef.current) return;

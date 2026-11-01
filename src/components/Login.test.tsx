@@ -166,7 +166,7 @@ describe('Login', () => {
     const user = userEvent.setup();
     const onSuccess = vi.fn();
     post.mockResolvedValue({
-      data: { access_token: 'token-value', expires_in: 3600, userId: 'ada' },
+      data: { access_token: 'token-value', expires_in: 3600, refresh_token: 'refresh-secret', userId: 'ada' },
     });
     renderLogin({ onSuccess });
 
@@ -179,6 +179,7 @@ describe('Login', () => {
         expect.objectContaining({ access_token: 'token-value', expires_in: 3600 }),
       ),
     );
+    expect(onSuccess.mock.calls[0]?.[0]).not.toHaveProperty('refresh_token');
     expect(post).toHaveBeenCalledWith(
       'http://localhost:8100/login',
       { email: 'ada@example.com', password: 'secret', linkOrigin: 'http://localhost:3000' },

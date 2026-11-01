@@ -62,6 +62,7 @@ describe('OAuthCallback', () => {
     expect(onSuccess).toHaveBeenCalledWith(
       expect.objectContaining({ access_token: 'super-secret-token', user_id: '7' }),
     );
+    expect(onSuccess.mock.calls[0]?.[0]).not.toHaveProperty('refresh_token');
     expect(axios.post).toHaveBeenCalledWith(
       'http://localhost:8100/oauth2/finalize',
       { code: 'abc', codeVerifier: null },

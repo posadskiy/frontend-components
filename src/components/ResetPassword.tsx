@@ -89,7 +89,7 @@ export function ResetPassword({
         await axios.post(
           accountEndpoint(origin, '/account/reset-password'),
           { token, password },
-          { signal: controller.signal },
+          { signal: controller.signal, withCredentials: true },
         );
       }
       if (!mountedRef.current) return;

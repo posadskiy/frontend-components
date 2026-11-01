@@ -36,9 +36,15 @@ export function isOAuthTokenResponse(value: unknown): value is OAuthTokenRespons
   return (
     typeof record.access_token === 'string' &&
     record.access_token.length > 0 &&
-    typeof record.refresh_token === 'string' &&
-    record.refresh_token.length > 0 &&
     typeof record.user_id === 'string' &&
     record.user_id.length > 0
   );
+}
+
+/** Drops a refresh token if a native-shaped body reaches the browser. The cookie is the credential. */
+export function withoutRefreshToken<T extends object>(value: T): T {
+  if (!('refresh_token' in value)) return value;
+  const copy = { ...value };
+  delete (copy as { refresh_token?: unknown }).refresh_token;
+  return copy;
 }
