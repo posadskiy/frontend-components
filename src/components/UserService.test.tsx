@@ -12,6 +12,25 @@ const { get, post, patch, remove } = vi.hoisted(() => ({
   remove: vi.fn(),
 }));
 
+const fetchMock = vi.fn();
+
+function httpResponse(status: number, body?: unknown) {
+  return new Response(body === undefined ? null : JSON.stringify(body), {
+    status,
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+  });
+}
+
+function expectAuthFetch(url: string, body: unknown) {
+  const call = fetchMock.mock.calls.find((entry) => entry[0] === url);
+  expect(call).toBeTruthy();
+  const init = call?.[1] as RequestInit;
+  expect(init.method).toBe('POST');
+  expect(init.credentials).toBe('include');
+  expect(init.body).toBe(JSON.stringify(body));
+  expect(new Headers(init.headers).get('Authorization')).toBe('Bearer super-secret');
+}
+
 vi.mock('axios', () => ({
   default: {
     get,
@@ -45,6 +64,9 @@ describe('UserService', () => {
     post.mockReset();
     patch.mockReset();
     remove.mockReset();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async () => httpResponse(204));
+    vi.stubGlobal('fetch', fetchMock);
   });
 
   it('encodes the user id and does not use an http picture url', async () => {
@@ -222,18 +244,7 @@ describe('UserService', () => {
 
     expect(await screen.findByText('Confirmation email sent.')).toBeInTheDocument();
     expect(onSuccess).toHaveBeenCalledWith('Confirmation email sent.');
-    expect(post).toHaveBeenCalledWith(
-      'http://localhost:8100/account/verification-email',
-      { linkOrigin: 'https://grammarbar.com' },
-      expect.objectContaining({
-        headers: {
-          Authorization: 'Bearer super-secret',
-          'Content-Type': 'application/json',
-        },
-        signal: expect.any(AbortSignal),
-        timeout: requestTimeoutMs,
-      }),
-    );
+    expectAuthFetch('http://localhost:8100/account/verification-email', { linkOrigin: 'https://grammarbar.com' });
   });
 
   it('keeps a custom scheme out of the confirmation request', async () => {
@@ -244,19 +255,19 @@ describe('UserService', () => {
     await user.click(await screen.findByRole('button', { name: 'Verify email' }));
     expect(await screen.findByText('Use an https address for the confirmation link.')).toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('waits two minutes before another confirmation email can be sent', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval'] });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     get.mockResolvedValue({ data: { ...profile, emailVerified: false } });
-    post.mockResolvedValue({ status: 204 });
     renderProfile({ linkOrigin: 'https://grammarbar.com' });
 
     try {
       await user.click(await screen.findByRole('button', { name: 'Verify email' }));
       expect(await screen.findByRole('button', { name: 'Resend in 2:00' })).toBeDisabled();
-      expect(post).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
       await vi.advanceTimersByTimeAsync(119_000);
       expect(screen.getByRole('button', { name: 'Resend in 0:01' })).toBeDisabled();
@@ -277,12 +288,13 @@ describe('UserService', () => {
 
     expect(await screen.findByRole('button', { name: 'Resend in 1:30' })).toBeDisabled();
     expect(post).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('shows a wait message when confirmation email is rate limited', async () => {
     const user = userEvent.setup();
     get.mockResolvedValue({ data: { ...profile, emailVerified: false } });
-    post.mockRejectedValue({ isAxiosError: true, response: { status: 429, data: { detail: 'slow down' } } });
+    fetchMock.mockResolvedValue(httpResponse(429, { detail: 'slow down' }));
     renderProfile({ linkOrigin: 'https://grammarbar.com' });
 
     await user.click(await screen.findByRole('button', { name: 'Verify email' }));
@@ -316,18 +328,7 @@ describe('UserService', () => {
     expect(await screen.findByText('Your account has been deleted successfully')).toBeInTheDocument();
     expect(onSuccess).toHaveBeenCalledWith('Your account has been deleted successfully');
     expect(onError).not.toHaveBeenCalled();
-    expect(post).toHaveBeenCalledWith(
-      'http://localhost:8100/account/erase',
-      { confirmation: 'DELETE', password: 'correct horse' },
-      expect.objectContaining({
-        headers: {
-          Authorization: 'Bearer super-secret',
-          'Content-Type': 'application/json',
-        },
-        signal: expect.any(AbortSignal),
-        timeout: requestTimeoutMs,
-      }),
-    );
+    expectAuthFetch('http://localhost:8100/account/erase', { confirmation: 'DELETE', password: 'correct horse' });
     expect(remove).not.toHaveBeenCalled();
   });
 
@@ -358,7 +359,6 @@ describe('UserService', () => {
     const user = userEvent.setup();
     const onSuccess = vi.fn();
     get.mockResolvedValue({ data: profile });
-    post.mockResolvedValue({ status: 204 });
     renderProfile({ authApiUrl: 'http://localhost:8100/', onSuccess });
 
     await user.click(await screen.findByRole('button', { name: 'Show account details' }));
@@ -372,16 +372,10 @@ describe('UserService', () => {
 
     expect(await screen.findByText('Password updated. Other sessions have been signed out.')).toBeInTheDocument();
     expect(onSuccess).toHaveBeenCalledWith('Password updated. Other sessions have been signed out.');
-    expect(post).toHaveBeenCalledWith(
-      'http://localhost:8100/account/password',
-      { currentPassword: 'oldpassword1', password: 'correcthorse' },
-      expect.objectContaining({
-        headers: {
-          Authorization: 'Bearer super-secret',
-          'Content-Type': 'application/json',
-        },
-      }),
-    );
+    expectAuthFetch('http://localhost:8100/account/password', {
+      currentPassword: 'oldpassword1',
+      password: 'correcthorse',
+    });
   });
 
   it('sets a password for a social account and confirms an email change', async () => {
@@ -389,7 +383,6 @@ describe('UserService', () => {
     get.mockResolvedValue({
       data: { ...profile, createdVia: 'Oauth', authProviders: ['google'], emailVerified: true },
     });
-    post.mockResolvedValue({ status: 204 });
     renderProfile({ authApiUrl: 'http://localhost:8100', linkOrigin: 'https://grammarbar.com/account' });
 
     await user.click(await screen.findByRole('button', { name: 'Show account details' }));
@@ -402,11 +395,7 @@ describe('UserService', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Set password' }));
 
     expect(await screen.findByText('Password set. You can sign in with your email and this password.')).toBeInTheDocument();
-    expect(post).toHaveBeenCalledWith(
-      'http://localhost:8100/account/password/set',
-      { password: 'correcthorse' },
-      expect.any(Object),
-    );
+    expectAuthFetch('http://localhost:8100/account/password/set', { password: 'correcthorse' });
 
     await user.click(screen.getByRole('button', { name: 'Change email' }));
     dialog = await screen.findByRole('dialog');
@@ -420,10 +409,10 @@ describe('UserService', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'ada@example.com' })).toBeInTheDocument();
-    expect(post).toHaveBeenCalledWith(
-      'http://localhost:8100/account/email',
-      { email: 'ada.new@example.com', linkOrigin: 'https://grammarbar.com', password: 'correcthorse' },
-      expect.any(Object),
-    );
+    expectAuthFetch('http://localhost:8100/account/email', {
+      email: 'ada.new@example.com',
+      linkOrigin: 'https://grammarbar.com',
+      password: 'correcthorse',
+    });
   });
 });
