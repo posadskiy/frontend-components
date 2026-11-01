@@ -23,7 +23,8 @@ function App() {
     console.log('Success:', message);
   };
 
-  // Pass your JWT when the API requires authentication (optional; omit for unauthenticated requests)
+  // Pass your access token when the API requires authentication. Password, email, verification, and erasure
+  // go to auth-service through @posadskiy/account-client and include the browser session cookie.
   const bearerToken = 'your-jwt-token-here';
 
   return (

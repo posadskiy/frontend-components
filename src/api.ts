@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { AccountClient, AccountHttpError } from '@posadskiy/account-client';
 import type { User, UserUrls } from './types';
 
 export interface UserRequest {
@@ -75,25 +76,30 @@ export async function fetchUser(request: UserRequest): Promise<User> {
   return readUser(response.data);
 }
 
+async function authPost(request: UserRequest, path: string, body: unknown): Promise<void> {
+  const token = request.bearerToken?.trim() || null;
+  const client = new AccountClient({ authUrl: request.apiUrl, timeoutMs: requestTimeoutMs });
+  if (token) client.session.adopt(token, null, null);
+  await client.request({
+    url: userUrl(request.apiUrl, request.userId, path),
+    method: 'POST',
+    body,
+    signal: request.signal,
+    auth: Boolean(token),
+  });
+}
+
 /**
  * Erases the sign-in account through auth-service. user-service `DELETE /v0/user/{id}` is limited to
  * internal callers; people confirm erasure here with the word DELETE, plus the password when the
  * account has one.
  */
 export async function changePassword(request: UserRequest, currentPassword: string, password: string): Promise<void> {
-  await axios.post(
-    userUrl(request.apiUrl, '', '/account/password'),
-    { currentPassword, password },
-    requestConfig(request, jsonHeaders(request.bearerToken)),
-  );
+  await authPost(request, '/account/password', { currentPassword, password });
 }
 
 export async function setPassword(request: UserRequest, password: string): Promise<void> {
-  await axios.post(
-    userUrl(request.apiUrl, '', '/account/password/set'),
-    { password },
-    requestConfig(request, jsonHeaders(request.bearerToken)),
-  );
+  await authPost(request, '/account/password/set', { password });
 }
 
 export async function changeEmail(
@@ -102,24 +108,19 @@ export async function changeEmail(
   linkOrigin: string,
   password?: string,
 ): Promise<void> {
-  await axios.post(
-    userUrl(request.apiUrl, '', '/account/email'),
-    {
-      email,
-      linkOrigin: siteOrigin(linkOrigin),
-      ...(password ? { password } : {}),
-    },
-    requestConfig(request, jsonHeaders(request.bearerToken)),
-  );
+  await authPost(request, '/account/email', {
+    email,
+    linkOrigin: siteOrigin(linkOrigin),
+    ...(password ? { password } : {}),
+  });
 }
 
 export async function eraseAccount(request: UserRequest, password: string): Promise<void> {
   const trimmedPassword = password.trim();
-  await axios.post(
-    userUrl(request.apiUrl, '', '/account/erase'),
-    { confirmation: 'DELETE', ...(trimmedPassword ? { password: trimmedPassword } : {}) },
-    requestConfig(request, jsonHeaders(request.bearerToken)),
-  );
+  await authPost(request, '/account/erase', {
+    confirmation: 'DELETE',
+    ...(trimmedPassword ? { password: trimmedPassword } : {}),
+  });
 }
 
 /**
@@ -148,11 +149,7 @@ export function siteOrigin(value: string): string {
 }
 
 export async function resendVerificationEmail(request: UserRequest, linkOrigin: string): Promise<void> {
-  await axios.post(
-    userUrl(request.apiUrl, request.userId, request.path ?? defaultVerificationEmailPath),
-    { linkOrigin: siteOrigin(linkOrigin) },
-    requestConfig(request, jsonHeaders(request.bearerToken)),
-  );
+  await authPost(request, request.path ?? defaultVerificationEmailPath, { linkOrigin: siteOrigin(linkOrigin) });
 }
 
 export function safePictureUrl(url?: unknown): string | undefined {
@@ -208,7 +205,16 @@ function isAxiosLike(error: unknown): error is { code?: string; response?: { sta
   return Boolean(error && typeof error === 'object' && (error as { isAxiosError?: boolean }).isAxiosError);
 }
 
+function publicStatus(error: unknown): number | undefined {
+  if (error instanceof AccountHttpError) return error.status > 0 ? error.status : undefined;
+  if (!isAxiosLike(error)) return undefined;
+  return error.response?.status;
+}
+
 export function toPublicError(error: unknown, fallback: string): Error {
+  if (error instanceof AccountHttpError && error.status === 0) {
+    return new Error('The user service took too long to respond.');
+  }
   if (isAxiosLike(error)) {
     const status = error.response?.status;
     if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
@@ -220,13 +226,17 @@ export function toPublicError(error: unknown, fallback: string): Error {
     if (!error.response) return new Error('Unable to reach the user service.');
     return new Error(fallback);
   }
+  const status = publicStatus(error);
+  if (status === 401 || status === 403) return new Error('You are not authorized to perform this action.');
+  if (status === 404) return new Error('User not found.');
+  if (status === 429) return new Error('Too many attempts. Wait a minute and try again.');
+  if (error instanceof AccountHttpError) return new Error(fallback);
   if (error instanceof Error && error.message) return new Error(error.message);
   return new Error(fallback);
 }
 
 export function responseStatus(error: unknown): number | undefined {
-  if (!isAxiosLike(error)) return undefined;
-  return error.response?.status;
+  return publicStatus(error);
 }
 
 export function accountActionError(
@@ -242,5 +252,5 @@ export function accountActionError(
 export function isCanceled(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const record = error as { code?: string; name?: string };
-  return record.code === 'ERR_CANCELED' || record.name === 'CanceledError';
+  return record.code === 'ERR_CANCELED' || record.name === 'CanceledError' || record.name === 'AbortError';
 }
