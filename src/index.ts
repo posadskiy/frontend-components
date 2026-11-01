@@ -3,6 +3,9 @@ export { Register } from './components/Register';
 export { ForgotPassword } from './components/ForgotPassword';
 export { ResetPassword } from './components/ResetPassword';
 export { OAuthCallback } from './components/OAuthCallback';
+export { VerifyEmail, ConfirmEmailChange } from './components/TokenLink';
+export { SessionList } from './components/SessionList';
+export { PasskeyManager } from './components/PasskeyManager';
 export {
   listSessions,
   revokeSession,

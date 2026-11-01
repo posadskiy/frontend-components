@@ -40,6 +40,19 @@ export interface AuthLabels {
   callbackErrorTitle: string;
   callbackMissingCode: string;
   continue: string;
+  verifyEmailTitle: string;
+  verifyEmailSuccess: string;
+  confirmEmailChangeTitle: string;
+  confirmEmailChangeSuccess: string;
+  sessionsTitle: string;
+  sessionsEmpty: string;
+  revokeSession: string;
+  passkeysTitle: string;
+  passkeysEmpty: string;
+  passkeysUnsupported: string;
+  passkeyLabel: string;
+  addPasskey: string;
+  deletePasskey: string;
   provider: Record<OAuthProvider, string>;
   registerProvider: Record<OAuthProvider, string>;
 }
@@ -93,6 +106,19 @@ export const defaultLabels: AuthLabels = {
   callbackErrorTitle: 'Error',
   callbackMissingCode: 'Missing OAuth code in callback URL.',
   continue: 'Continue',
+  verifyEmailTitle: 'Confirm your email',
+  verifyEmailSuccess: 'Your email is confirmed. You can sign in.',
+  confirmEmailChangeTitle: 'Confirm your new email',
+  confirmEmailChangeSuccess: 'Your email address has been updated.',
+  sessionsTitle: 'Sessions',
+  sessionsEmpty: 'No other sessions.',
+  revokeSession: 'Sign out this session',
+  passkeysTitle: 'Passkeys',
+  passkeysEmpty: 'No passkeys yet.',
+  passkeysUnsupported: 'This browser cannot use passkeys.',
+  passkeyLabel: 'Passkey name',
+  addPasskey: 'Add a passkey',
+  deletePasskey: 'Remove passkey',
   provider: providerLabels,
   registerProvider: {
     ...providerLabels,
