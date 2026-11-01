@@ -62,7 +62,8 @@ describe('UserService', () => {
     );
     expect(document.querySelector('img')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Resend confirmation email' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Verify email' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Display name')).not.toBeInTheDocument();
   });
 
   it('shows the load error and hides profile actions', async () => {
@@ -89,16 +90,23 @@ describe('UserService', () => {
 
     expect(await screen.findByRole('heading', { name: 'ada@example.com' })).toBeInTheDocument();
     expect(screen.getByText('Verified')).toBeInTheDocument();
-    expect(screen.getByText('Local')).toBeInTheDocument();
-    expect(screen.getByText('Google')).toBeInTheDocument();
+    expect(screen.queryByText('Local')).not.toBeInTheDocument();
+    expect(screen.queryByText('Google')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument();
     expect(document.querySelector('img')).toHaveAttribute('src', 'https://cdn.example/a.png');
     expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Resend confirmation email' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Verify email' })).not.toBeInTheDocument();
     expect(screen.queryByText(/username/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Edit profile' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: 'Display name' })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Time zone' })).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show account details' }));
+    expect(screen.getByText('Local')).toBeInTheDocument();
+    expect(screen.getByText('Google')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit profile' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change password' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument();
   });
 
   it('shows a load error when the profile payload is not safe to render', async () => {
@@ -144,10 +152,12 @@ describe('UserService', () => {
     renderProfile();
 
     expect(await screen.findByRole('heading', { name: 'Ada' })).toBeInTheDocument();
-    expect(screen.getByText('Deutsch')).toBeInTheDocument();
-    expect(screen.getByText(/Berlin/)).toBeInTheDocument();
+    expect(screen.queryByText('Deutsch')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: 'Show account details' }));
+    expect(screen.getByText('Deutsch')).toBeInTheDocument();
+    expect(screen.getByText(/Berlin/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Edit profile' }));
     const name = screen.getByRole('textbox', { name: 'Display name' });
     expect(name).toHaveValue('Ada');
@@ -207,7 +217,8 @@ describe('UserService', () => {
 
     expect(await screen.findByText('Not verified')).toBeInTheDocument();
     expect(screen.queryByText(/username/i)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Resend confirmation email' }));
+    expect(screen.queryByRole('button', { name: 'Change email' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Verify email' }));
 
     expect(await screen.findByText('Confirmation email sent.')).toBeInTheDocument();
     expect(onSuccess).toHaveBeenCalledWith('Confirmation email sent.');
@@ -230,7 +241,7 @@ describe('UserService', () => {
     get.mockResolvedValue({ data: { ...profile, emailVerified: false } });
     renderProfile({ linkOrigin: 'grammarbar://auth' });
 
-    await user.click(await screen.findByRole('button', { name: 'Resend confirmation email' }));
+    await user.click(await screen.findByRole('button', { name: 'Verify email' }));
     expect(await screen.findByText('Use an https address for the confirmation link.')).toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
   });
@@ -243,14 +254,14 @@ describe('UserService', () => {
     renderProfile({ linkOrigin: 'https://grammarbar.com' });
 
     try {
-      await user.click(await screen.findByRole('button', { name: 'Resend confirmation email' }));
+      await user.click(await screen.findByRole('button', { name: 'Verify email' }));
       expect(await screen.findByRole('button', { name: 'Resend in 2:00' })).toBeDisabled();
       expect(post).toHaveBeenCalledTimes(1);
 
       await vi.advanceTimersByTimeAsync(119_000);
       expect(screen.getByRole('button', { name: 'Resend in 0:01' })).toBeDisabled();
       await vi.advanceTimersByTimeAsync(1_000);
-      expect(screen.getByRole('button', { name: 'Resend confirmation email' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Verify email' })).toBeEnabled();
     } finally {
       vi.useRealTimers();
     }
@@ -274,7 +285,7 @@ describe('UserService', () => {
     post.mockRejectedValue({ isAxiosError: true, response: { status: 429, data: { detail: 'slow down' } } });
     renderProfile({ linkOrigin: 'https://grammarbar.com' });
 
-    await user.click(await screen.findByRole('button', { name: 'Resend confirmation email' }));
+    await user.click(await screen.findByRole('button', { name: 'Verify email' }));
     expect(await screen.findByText('Too many attempts. Wait a minute and try again.')).toBeInTheDocument();
     expect(screen.queryByText('slow down')).not.toBeInTheDocument();
   });
@@ -287,7 +298,8 @@ describe('UserService', () => {
     remove.mockResolvedValue({});
     renderProfile({ allowDelete: true, authApiUrl: 'http://localhost:8100', onSuccess, onError });
 
-    await user.click(await screen.findByRole('button', { name: 'Delete account' }));
+    await user.click(await screen.findByRole('button', { name: 'Show account details' }));
+    await user.click(screen.getByRole('button', { name: 'Delete account' }));
     const dialog = await screen.findByRole('dialog');
     const email = within(dialog).getByRole('textbox', { name: 'Email' });
     await user.type(email, 'wrong@example.com');
@@ -317,5 +329,101 @@ describe('UserService', () => {
       }),
     );
     expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('keeps profile details behind the expand control', async () => {
+    const user = userEvent.setup();
+    get.mockResolvedValue({
+      data: { ...profile, displayName: 'Ada', locale: 'en', timeZone: 'Europe/Ljubljana' },
+    });
+    renderProfile();
+
+    expect(await screen.findByRole('heading', { name: 'Ada' })).toBeInTheDocument();
+    expect(screen.getByText('ada@example.com')).toBeInTheDocument();
+    expect(screen.getByText('Verified')).toBeInTheDocument();
+    expect(screen.queryByText('Display name')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change email' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show account details' }));
+    expect(screen.getByRole('button', { name: 'Hide account details' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Display name')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change email' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Hide account details' }));
+    expect(screen.queryByText('Display name')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit profile' })).not.toBeInTheDocument();
+  });
+
+  it('changes the password through auth-service', async () => {
+    const user = userEvent.setup();
+    const onSuccess = vi.fn();
+    get.mockResolvedValue({ data: profile });
+    post.mockResolvedValue({ status: 204 });
+    renderProfile({ authApiUrl: 'http://localhost:8100/', onSuccess });
+
+    await user.click(await screen.findByRole('button', { name: 'Show account details' }));
+    await user.click(screen.getByRole('button', { name: 'Change password' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Change password' })).toBeDisabled();
+    await user.type(within(dialog).getByLabelText(/^Current password/), 'oldpassword1');
+    await user.type(within(dialog).getByLabelText(/^New password/), 'correcthorse');
+    await user.type(within(dialog).getByLabelText(/^Confirm new password/), 'correcthorse');
+    await user.click(within(dialog).getByRole('button', { name: 'Change password' }));
+
+    expect(await screen.findByText('Password updated. Other sessions have been signed out.')).toBeInTheDocument();
+    expect(onSuccess).toHaveBeenCalledWith('Password updated. Other sessions have been signed out.');
+    expect(post).toHaveBeenCalledWith(
+      'http://localhost:8100/account/password',
+      { currentPassword: 'oldpassword1', password: 'correcthorse' },
+      expect.objectContaining({
+        headers: {
+          Authorization: 'Bearer super-secret',
+          'Content-Type': 'application/json',
+        },
+      }),
+    );
+  });
+
+  it('sets a password for a social account and confirms an email change', async () => {
+    const user = userEvent.setup();
+    get.mockResolvedValue({
+      data: { ...profile, createdVia: 'Oauth', authProviders: ['google'], emailVerified: true },
+    });
+    post.mockResolvedValue({ status: 204 });
+    renderProfile({ authApiUrl: 'http://localhost:8100', linkOrigin: 'https://grammarbar.com/account' });
+
+    await user.click(await screen.findByRole('button', { name: 'Show account details' }));
+    expect(screen.queryByRole('button', { name: 'Change password' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Set password' }));
+    let dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByLabelText(/^Current password/)).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/^New password/), 'correcthorse');
+    await user.type(within(dialog).getByLabelText(/^Confirm new password/), 'correcthorse');
+    await user.click(within(dialog).getByRole('button', { name: 'Set password' }));
+
+    expect(await screen.findByText('Password set. You can sign in with your email and this password.')).toBeInTheDocument();
+    expect(post).toHaveBeenCalledWith(
+      'http://localhost:8100/account/password/set',
+      { password: 'correcthorse' },
+      expect.any(Object),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Change email' }));
+    dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/^New email/), 'ada.new@example.com');
+    await user.type(within(dialog).getByLabelText(/^Current password/), 'correcthorse');
+    await user.click(within(dialog).getByRole('button', { name: 'Send confirmation link' }));
+
+    expect(
+      await screen.findByText(
+        'Confirmation link sent to ada.new@example.com. ada@example.com stays on this account until you open the link.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'ada@example.com' })).toBeInTheDocument();
+    expect(post).toHaveBeenCalledWith(
+      'http://localhost:8100/account/email',
+      { email: 'ada.new@example.com', linkOrigin: 'https://grammarbar.com', password: 'correcthorse' },
+      expect.any(Object),
+    );
   });
 });

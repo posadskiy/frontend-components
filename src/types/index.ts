@@ -42,8 +42,8 @@ export interface UserServiceProps {
   /** Bearer token for authenticated requests to /v0/user/me and related endpoints. When omitted, requests are sent without Authorization (may get 401). */
   bearerToken?: string | null;
   /**
-   * Auth-service base URL for the confirmation-email request.
-   * A relative `urls.verificationEmail` is appended here. When omitted, `apiUrl` is used.
+   * Auth-service base URL for confirmation email, password, email change, and account erasure.
+   * A relative path is appended here. When omitted, `apiUrl` is used.
    */
   authApiUrl?: string;
   /**
@@ -52,9 +52,10 @@ export interface UserServiceProps {
    */
   linkOrigin?: string;
   onError?: (error: Error) => void;
+  /** Confirmation email, password, email-change link, and account deletion. */
   onSuccess?: (message: string) => void;
   /**
-   * Show the account-erasure action. Defaults to false.
+   * Show account deletion inside the expanded details. Defaults to false.
    * The email prompt confirms the click. The request goes to auth-service `POST /account/erase`
    * (`authApiUrl`, or `apiUrl` when that is omitted). A password is sent when the field is filled.
    */

@@ -80,6 +80,39 @@ export async function fetchUser(request: UserRequest): Promise<User> {
  * internal callers; people confirm erasure here with the word DELETE, plus the password when the
  * account has one.
  */
+export async function changePassword(request: UserRequest, currentPassword: string, password: string): Promise<void> {
+  await axios.post(
+    userUrl(request.apiUrl, '', '/account/password'),
+    { currentPassword, password },
+    requestConfig(request, jsonHeaders(request.bearerToken)),
+  );
+}
+
+export async function setPassword(request: UserRequest, password: string): Promise<void> {
+  await axios.post(
+    userUrl(request.apiUrl, '', '/account/password/set'),
+    { password },
+    requestConfig(request, jsonHeaders(request.bearerToken)),
+  );
+}
+
+export async function changeEmail(
+  request: UserRequest,
+  email: string,
+  linkOrigin: string,
+  password?: string,
+): Promise<void> {
+  await axios.post(
+    userUrl(request.apiUrl, '', '/account/email'),
+    {
+      email,
+      linkOrigin: siteOrigin(linkOrigin),
+      ...(password ? { password } : {}),
+    },
+    requestConfig(request, jsonHeaders(request.bearerToken)),
+  );
+}
+
 export async function eraseAccount(request: UserRequest, password: string): Promise<void> {
   const trimmedPassword = password.trim();
   await axios.post(
@@ -189,6 +222,21 @@ export function toPublicError(error: unknown, fallback: string): Error {
   }
   if (error instanceof Error && error.message) return new Error(error.message);
   return new Error(fallback);
+}
+
+export function responseStatus(error: unknown): number | undefined {
+  if (!isAxiosLike(error)) return undefined;
+  return error.response?.status;
+}
+
+export function accountActionError(
+  error: unknown,
+  fallback: string,
+  byStatus: Partial<Record<number, string>> = {},
+): Error {
+  const status = responseStatus(error);
+  if (status && byStatus[status]) return new Error(byStatus[status]);
+  return toPublicError(error, fallback);
 }
 
 export function isCanceled(error: unknown): boolean {

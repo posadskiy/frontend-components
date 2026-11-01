@@ -15,23 +15,35 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
+  IconButton,
   Stack,
   TextField,
+  Tooltip,
   Typography,
   type SxProps,
   type Theme,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import MarkEmailUnreadIcon from '@mui/icons-material/MarkEmailUnread';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ForwardToInboxIcon from '@mui/icons-material/ForwardToInbox';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
+import LockResetIcon from '@mui/icons-material/LockReset';
+import MailOutlinedIcon from '@mui/icons-material/MailOutlined';
 import {
+  accountActionError,
+  changeEmail,
+  changePassword,
   defaultVerificationEmailPath,
   eraseAccount,
   fetchUser,
   isCanceled,
   resendVerificationEmail,
+  responseStatus,
   safePictureUrl,
   saveProductPreference,
+  setPassword as setAccountPassword,
   toPublicError,
   updateProfile,
   userPaths,
@@ -234,42 +246,27 @@ export function UserService({
   }
 
   const { user } = view;
-  const showResend = user.emailVerified === false;
-  const showActions = allowDelete || showResend;
-  const showFacts = hasProfileFacts(user);
 
   return (
     <Card className={className} sx={cardSx}>
       <CardContent>
-        <Stack spacing={3} divider={showFacts || showActions ? <Divider /> : undefined}>
-          <ProfileSection
-            user={user}
-            endpoint={endpoint}
-            product={product}
-            signalRef={signalRef}
-            onSaved={(next) => setView({ status: 'ready', user: next })}
-            onError={onError}
-          />
-          {showFacts && <ProfileFacts user={user} />}
-          {showActions && (
-            <AccountActions
-              user={user}
-              allowDelete={allowDelete}
-              showResend={showResend}
-              endpoint={endpoint}
-              signalRef={signalRef}
-              authApiUrl={authApiUrl ?? apiUrl}
-              verificationPath={urls?.verificationEmail ?? defaultVerificationEmailPath}
-              linkOrigin={linkOrigin}
-              onDeleted={() => {
-                setView({ status: 'deleted', message: DELETED_MESSAGE });
-                onSuccess?.(DELETED_MESSAGE);
-              }}
-              onSent={() => onSuccess?.(VERIFICATION_SENT_MESSAGE)}
-              onError={onError}
-            />
-          )}
-        </Stack>
+        <AccountCard
+          user={user}
+          endpoint={endpoint}
+          product={product}
+          signalRef={signalRef}
+          allowDelete={allowDelete}
+          authApiUrl={authApiUrl ?? apiUrl}
+          verificationPath={urls?.verificationEmail ?? defaultVerificationEmailPath}
+          linkOrigin={linkOrigin}
+          onSaved={(next) => setView({ status: 'ready', user: next })}
+          onDeleted={() => {
+            setView({ status: 'deleted', message: DELETED_MESSAGE });
+            onSuccess?.(DELETED_MESSAGE);
+          }}
+          onSuccess={onSuccess}
+          onError={onError}
+        />
       </CardContent>
     </Card>
   );
@@ -295,60 +292,236 @@ function StatusCard({ className, sx, children }: { className?: string; sx: SxPro
   );
 }
 
-function ProfileSection({
+const PASSWORD_HINTS = new Set(['local', 'password', 'email', 'credentials']);
+const SOCIAL_HINTS = new Set(['google', 'apple', 'facebook', 'github', 'oauth', 'oidc']);
+const PASSWORD_UPDATED = 'Password updated. Other sessions have been signed out.';
+const PASSWORD_SET = 'Password set. You can sign in with your email and this password.';
+
+function accountHints(user: User): string[] {
+  const providers = Array.isArray(user.authProviders) ? user.authProviders : [];
+  const created = typeof user.createdVia === 'string' ? [user.createdVia] : [];
+  return [...providers, ...created]
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
+}
+
+function accountUsesPassword(user: User): boolean {
+  const hints = accountHints(user);
+  if (hints.some((hint) => PASSWORD_HINTS.has(hint))) return true;
+  if (hints.some((hint) => SOCIAL_HINTS.has(hint))) return false;
+  return true;
+}
+
+function passwordIssue(password: string, email: string): string | null {
+  if (password.length < 10 || password.length > 72) return 'Password must be 10–72 characters.';
+  if (password.toLowerCase() === email.trim().toLowerCase()) return 'Password must not match your email.';
+  return null;
+}
+
+function isEmailAddress(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function AccountCard({
   user,
   endpoint,
   product,
   signalRef,
+  allowDelete,
+  authApiUrl,
+  verificationPath,
+  linkOrigin,
   onSaved,
+  onDeleted,
+  onSuccess,
   onError,
 }: {
   user: User;
   endpoint: UserEndpoint;
   product?: 'grammarbar' | 'costy' | 'repeaty';
   signalRef: RefObject<AbortSignal | null>;
+  allowDelete: boolean;
+  authApiUrl: string;
+  verificationPath: string;
+  linkOrigin?: string;
   onSaved: (user: User) => void;
+  onDeleted: () => void;
+  onSuccess?: (message: string) => void;
   onError?: (error: Error) => void;
 }) {
+  const detailsId = useId();
+  const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [credential, setCredential] = useState<'password' | 'email' | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [passwordReady, setPasswordReady] = useState(false);
+  const usesPassword = passwordReady || accountUsesPassword(user);
+  const unverified = user.emailVerified === false;
+  const expandLabel = expanded ? 'Hide account details' : 'Show account details';
+
+  const finish = (message: string) => {
+    setNotice(message);
+    setCredential(null);
+    onSuccess?.(message);
+  };
 
   return (
-    <Stack spacing={2.5}>
+    <Stack spacing={2}>
       {notice && <Alert severity="success">{notice}</Alert>}
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <ProfileHeader user={user} />
-        </Box>
-        {!editing && (
-          <Button
-            type="button"
-            variant="outlined"
-            size="small"
-            startIcon={<EditIcon />}
-            onClick={() => setEditing(true)}
-            sx={{ flexShrink: 0, mt: 0.5 }}
-          >
-            Edit profile
-          </Button>
-        )}
-      </Box>
-      {editing ? (
-        <ProfileEditor
-          user={user}
+      <ProfileHeader
+        user={user}
+        action={
+          <Tooltip title={expandLabel}>
+            <IconButton
+              type="button"
+              aria-label={expandLabel}
+              aria-expanded={expanded}
+              aria-controls={expanded ? detailsId : undefined}
+              onClick={() => {
+                setExpanded((open) => {
+                  if (open) setEditing(false);
+                  return !open;
+                });
+              }}
+              sx={{ flexShrink: 0, width: 40, height: 40 }}
+            >
+              {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </IconButton>
+          </Tooltip>
+        }
+      />
+      {unverified && (
+        <VerifyEmail
           endpoint={endpoint}
-          product={product}
+          authApiUrl={authApiUrl}
+          verificationPath={verificationPath}
+          linkOrigin={linkOrigin}
           signalRef={signalRef}
-          onCancel={() => setEditing(false)}
-          onSaved={(next) => {
-            onSaved(next);
-            setNotice('Profile saved.');
-            setEditing(false);
-          }}
+          onSent={() => onSuccess?.(VERIFICATION_SENT_MESSAGE)}
           onError={onError}
         />
-      ) : (
-        <ProfileDetails user={user} />
+      )}
+      {expanded && (
+        <Stack id={detailsId} spacing={2}>
+          <Stack spacing={2}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, minHeight: 40 }}>
+              <Typography variant="subtitle2" component="h3">
+                Profile
+              </Typography>
+              {!editing && (
+                <Tooltip title="Edit profile">
+                  <IconButton
+                    type="button"
+                    aria-label="Edit profile"
+                    onClick={() => setEditing(true)}
+                    sx={{ width: 40, height: 40 }}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Box>
+            {editing ? (
+              <ProfileEditor
+                user={user}
+                endpoint={endpoint}
+                product={product}
+                signalRef={signalRef}
+                onCancel={() => setEditing(false)}
+                onSaved={(next) => {
+                  onSaved(next);
+                  setNotice('Profile saved.');
+                  setEditing(false);
+                }}
+                onError={onError}
+              />
+            ) : (
+              <ProfileDetails user={user} />
+            )}
+          </Stack>
+          <Divider />
+          <Stack spacing={2}>
+            <Typography variant="subtitle2" component="h3">
+              Sign-in
+            </Typography>
+            <ProfileFacts user={user} />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                type="button"
+                variant="outlined"
+                startIcon={usesPassword ? <LockResetIcon /> : <LockOpenIcon />}
+                onClick={() => setCredential('password')}
+                sx={{ width: { xs: '100%', sm: 'auto' }, minHeight: 40 }}
+              >
+                {usesPassword ? 'Change password' : 'Set password'}
+              </Button>
+              <Button
+                type="button"
+                variant="outlined"
+                startIcon={<MailOutlinedIcon />}
+                onClick={() => setCredential('email')}
+                sx={{ width: { xs: '100%', sm: 'auto' }, minHeight: 40 }}
+              >
+                Change email
+              </Button>
+            </Box>
+          </Stack>
+          {allowDelete && (
+            <>
+              <Divider />
+              <Button
+                type="button"
+                variant="outlined"
+                color="error"
+                startIcon={<DeleteIcon />}
+                onClick={() => setDeleteOpen(true)}
+                sx={{ alignSelf: 'flex-start', width: { xs: '100%', sm: 'auto' }, minHeight: 40 }}
+              >
+                Delete account
+              </Button>
+            </>
+          )}
+        </Stack>
+      )}
+      {credential === 'password' && (
+        <PasswordDialog
+          user={user}
+          endpoint={endpoint}
+          authApiUrl={authApiUrl}
+          signalRef={signalRef}
+          initialMode={usesPassword ? 'change' : 'set'}
+          onClose={() => setCredential(null)}
+          onUsesPassword={() => setPasswordReady(true)}
+          onDone={finish}
+          onError={onError}
+        />
+      )}
+      {credential === 'email' && (
+        <EmailDialog
+          user={user}
+          endpoint={endpoint}
+          authApiUrl={authApiUrl}
+          linkOrigin={linkOrigin}
+          signalRef={signalRef}
+          askPassword={usesPassword}
+          onClose={() => setCredential(null)}
+          onUsesPassword={() => setPasswordReady(true)}
+          onDone={finish}
+          onError={onError}
+        />
+      )}
+      {allowDelete && deleteOpen && (
+        <DeleteProfileForm
+          user={user}
+          endpoint={endpoint}
+          authApiUrl={authApiUrl}
+          signalRef={signalRef}
+          onClose={() => setDeleteOpen(false)}
+          onDeleted={onDeleted}
+          onError={onError}
+        />
       )}
     </Stack>
   );
@@ -492,43 +665,46 @@ function ProfileEditor({
   );
 }
 
-function ProfileHeader({ user }: { user: User }) {
+function ProfileHeader({ user, action }: { user: User; action?: ReactNode }) {
   const picture = safePictureUrl(user.pictureUrl);
   const [failedPicture, setFailedPicture] = useState<string | null>(null);
   const verified = user.emailVerified === true;
   const unverified = user.emailVerified === false;
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-      <Avatar
-        src={picture && failedPicture !== picture ? picture : undefined}
-        alt=""
-        onError={() => {
-          if (picture) setFailedPicture(picture);
-        }}
-        sx={{ width: 56, height: 56, flexShrink: 0 }}
-      >
-        {emailInitial(user.email)}
-      </Avatar>
-      <Box sx={{ minWidth: 0 }}>
-        <Typography variant="h6" component="h2" sx={{ overflowWrap: 'anywhere', lineHeight: 1.3 }}>
-          {user.displayName?.trim() || user.email}
-        </Typography>
-        {user.displayName?.trim() && (
-          <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
-            {user.email}
+    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, minWidth: 0 }}>
+        <Avatar
+          src={picture && failedPicture !== picture ? picture : undefined}
+          alt=""
+          onError={() => {
+            if (picture) setFailedPicture(picture);
+          }}
+          sx={{ width: 56, height: 56, flexShrink: 0 }}
+        >
+          {emailInitial(user.email)}
+        </Avatar>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="h6" component="h2" sx={{ overflowWrap: 'anywhere', lineHeight: 1.3 }}>
+            {user.displayName?.trim() || user.email}
           </Typography>
-        )}
-        {(verified || unverified) && (
-          <Chip
-            size="small"
-            variant="outlined"
-            color={verified ? 'success' : 'warning'}
-            label={verified ? 'Verified' : 'Not verified'}
-            sx={{ mt: 1 }}
-          />
-        )}
+          {user.displayName?.trim() && (
+            <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
+              {user.email}
+            </Typography>
+          )}
+          {(verified || unverified) && (
+            <Chip
+              size="small"
+              variant="outlined"
+              color={verified ? 'success' : 'warning'}
+              label={verified ? 'Verified' : 'Not verified'}
+              sx={{ mt: 1 }}
+            />
+          )}
+        </Box>
       </Box>
+      {action}
     </Box>
   );
 }
@@ -538,14 +714,10 @@ function profileProviders(user: User): string[] {
   return user.authProviders.filter((provider) => typeof provider === 'string' && provider.trim());
 }
 
-function hasProfileFacts(user: User): boolean {
-  const createdVia = typeof user.createdVia === 'string' ? user.createdVia.trim() : '';
-  return createdVia.length > 0 || profileProviders(user).length > 0;
-}
-
 function ProfileFacts({ user }: { user: User }) {
   const createdVia = typeof user.createdVia === 'string' ? displayLabel(user.createdVia) : '';
   const providers = profileProviders(user);
+  if (!createdVia && providers.length === 0) return null;
 
   return (
     <DetailList>
@@ -609,33 +781,34 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function AccountActions({
-  user,
-  allowDelete,
-  showResend,
+function authRequest(endpoint: UserEndpoint, authApiUrl: string, signalRef: RefObject<AbortSignal | null>): UserRequest {
+  return {
+    apiUrl: authApiUrl,
+    userId: endpoint.userId,
+    bearerToken: endpoint.bearerToken,
+    signal: signalRef.current ?? undefined,
+  };
+}
+
+function VerifyEmail({
   endpoint,
-  signalRef,
   authApiUrl,
   verificationPath,
   linkOrigin,
-  onDeleted,
+  signalRef,
   onSent,
   onError,
 }: {
-  user: User;
-  allowDelete: boolean;
-  showResend: boolean;
   endpoint: UserEndpoint;
-  signalRef: RefObject<AbortSignal | null>;
   authApiUrl: string;
   verificationPath: string;
   linkOrigin?: string;
-  onDeleted: () => void;
+  signalRef: RefObject<AbortSignal | null>;
   onSent: () => void;
   onError?: (error: Error) => void;
 }) {
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [cooldownUntil, setCooldownUntil] = useState(() => readVerificationCooldown(endpoint.userId));
+  const [announce, setAnnounce] = useState(() => readVerificationCooldown(endpoint.userId) > Date.now());
   const [now, setNow] = useState(() => Date.now());
   const remainingMs = Math.max(0, cooldownUntil - now);
 
@@ -647,6 +820,7 @@ function AccountActions({
         window.clearInterval(id);
         clearVerificationCooldown(endpoint.userId);
         setCooldownUntil(0);
+        setAnnounce(false);
         setNow(next);
         return;
       }
@@ -674,6 +848,7 @@ function AccountActions({
         writeVerificationCooldown(endpoint.userId, until);
         setCooldownUntil(until);
         setNow(Date.now());
+        setAnnounce(true);
         onSent();
         return { error: null, sent: true };
       } catch (error) {
@@ -687,46 +862,306 @@ function AccountActions({
   );
 
   return (
-    <Stack spacing={2}>
-      {resend.sent && <Alert severity="success">{VERIFICATION_SENT_MESSAGE}</Alert>}
+    <Stack spacing={1}>
+      {announce && <Alert severity="success">{VERIFICATION_SENT_MESSAGE}</Alert>}
       {resend.error && <Alert severity="error">{resend.error}</Alert>}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
-        {allowDelete && (
-          <Button
-            type="button"
-            variant="outlined"
-            color="error"
-            startIcon={<DeleteIcon />}
-            onClick={() => setDeleteOpen(true)}
-          >
-            Delete account
-          </Button>
-        )}
-        {showResend && (
-          <Box component="form" action={submitResend}>
-            <Button
-              type="submit"
-              variant="outlined"
-              startIcon={resendPending ? <CircularProgress size={16} color="inherit" /> : <MarkEmailUnreadIcon />}
-              disabled={resendPending || remainingMs > 0}
-            >
-              {resendPending ? 'Sending...' : remainingMs > 0 ? cooldownLabel(remainingMs) : 'Resend confirmation email'}
-            </Button>
-          </Box>
-        )}
+      <Box component="form" action={submitResend} sx={{ alignSelf: 'flex-start', width: { xs: '100%', sm: 'auto' } }}>
+        <Button
+          type="submit"
+          variant="outlined"
+          startIcon={resendPending ? <CircularProgress size={16} color="inherit" /> : <ForwardToInboxIcon />}
+          disabled={resendPending || remainingMs > 0}
+          sx={{ width: { xs: '100%', sm: 'auto' }, minHeight: 40 }}
+        >
+          {resendPending ? 'Sending...' : remainingMs > 0 ? cooldownLabel(remainingMs) : 'Verify email'}
+        </Button>
       </Box>
-      {allowDelete && deleteOpen && (
-        <DeleteProfileForm
-          user={user}
-          endpoint={endpoint}
-          authApiUrl={authApiUrl}
-          signalRef={signalRef}
-          onClose={() => setDeleteOpen(false)}
-          onDeleted={onDeleted}
-          onError={onError}
-        />
-      )}
     </Stack>
+  );
+}
+
+function PasswordDialog({
+  user,
+  endpoint,
+  authApiUrl,
+  signalRef,
+  initialMode,
+  onClose,
+  onUsesPassword,
+  onDone,
+  onError,
+}: {
+  user: User;
+  endpoint: UserEndpoint;
+  authApiUrl: string;
+  signalRef: RefObject<AbortSignal | null>;
+  initialMode: 'change' | 'set';
+  onClose: () => void;
+  onUsesPassword: () => void;
+  onDone: (message: string) => void;
+  onError?: (error: Error) => void;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const [mode, setMode] = useState(initialMode);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const mismatch = confirm.length > 0 && confirm !== password;
+  const ready =
+    passwordIssue(password, user.email) === null &&
+    password === confirm &&
+    (mode === 'set' || currentPassword.length > 0);
+  const close = () => {
+    if (!pending) onClose();
+  };
+  const title = mode === 'set' ? 'Set password' : 'Change password';
+
+  const submit = async () => {
+    if (!ready || pending) return;
+    setPending(true);
+    setError(null);
+    const request = authRequest(endpoint, authApiUrl, signalRef);
+    try {
+      if (mode === 'set') {
+        await setAccountPassword(request, password);
+        onUsesPassword();
+        setPending(false);
+        if (!request.signal?.aborted) onDone(PASSWORD_SET);
+      } else {
+        await changePassword(request, currentPassword, password);
+        setPending(false);
+        if (!request.signal?.aborted) onDone(PASSWORD_UPDATED);
+      }
+    } catch (caught) {
+      if (isCanceled(caught) || request.signal?.aborted) return;
+      if (mode === 'set' && responseStatus(caught) === 409) {
+        setMode('change');
+        onUsesPassword();
+        setError('This account already has a password.');
+        setPending(false);
+        return;
+      }
+      const publicError = accountActionError(caught, mode === 'set' ? 'Unable to set the password.' : 'Unable to change the password.', {
+        401: 'Current password is incorrect.',
+      });
+      setError(publicError.message);
+      onError?.(publicError);
+      setPending(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={close} maxWidth="sm" fullWidth aria-labelledby={titleId} aria-describedby={descriptionId}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <DialogTitle id={titleId}>{title}</DialogTitle>
+        <DialogContent>
+          <DialogContentText id={descriptionId}>
+            {mode === 'set'
+              ? 'Add a password so you can also sign in with your email.'
+              : 'Choose a new password. Other signed-in sessions will be signed out.'}
+          </DialogContentText>
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          )}
+          {mode === 'change' && (
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Current password"
+              type="password"
+              fullWidth
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              disabled={pending}
+              autoComplete="current-password"
+              required
+              sx={{ mt: 2 }}
+            />
+          )}
+          <TextField
+            autoFocus={mode === 'set'}
+            margin="dense"
+            label="New password"
+            type="password"
+            fullWidth
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            disabled={pending}
+            autoComplete="new-password"
+            required
+            helperText="10–72 characters. It cannot match your email."
+            sx={{ mt: mode === 'set' ? 2 : undefined }}
+          />
+          <TextField
+            margin="dense"
+            label="Confirm new password"
+            type="password"
+            fullWidth
+            value={confirm}
+            onChange={(event) => setConfirm(event.target.value)}
+            disabled={pending}
+            autoComplete="new-password"
+            required
+            error={mismatch}
+            helperText={mismatch ? 'Passwords do not match.' : undefined}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button type="button" onClick={close} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="contained" disabled={pending || !ready}>
+            {pending ? 'Saving...' : title}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
+  );
+}
+
+function EmailDialog({
+  user,
+  endpoint,
+  authApiUrl,
+  linkOrigin,
+  signalRef,
+  askPassword,
+  onClose,
+  onUsesPassword,
+  onDone,
+  onError,
+}: {
+  user: User;
+  endpoint: UserEndpoint;
+  authApiUrl: string;
+  linkOrigin?: string;
+  signalRef: RefObject<AbortSignal | null>;
+  askPassword: boolean;
+  onClose: () => void;
+  onUsesPassword: () => void;
+  onDone: (message: string) => void;
+  onError?: (error: Error) => void;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [needsPassword, setNeedsPassword] = useState(askPassword);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const trimmed = email.trim();
+  const same = trimmed.length > 0 && trimmed.toLowerCase() === user.email.trim().toLowerCase();
+  const ready = isEmailAddress(trimmed) && !same && (!needsPassword || password.length > 0);
+  const close = () => {
+    if (!pending) onClose();
+  };
+
+  const submit = async () => {
+    if (!ready || pending) return;
+    setPending(true);
+    setError(null);
+    const request = authRequest(endpoint, authApiUrl, signalRef);
+    try {
+      await changeEmail(
+        request,
+        trimmed,
+        linkOrigin ?? window.location.origin,
+        needsPassword ? password : undefined,
+      );
+      setPending(false);
+      if (!request.signal?.aborted) {
+        onDone(
+          `Confirmation link sent to ${trimmed}. ${user.email} stays on this account until you open the link.`,
+        );
+      }
+    } catch (caught) {
+      if (isCanceled(caught) || request.signal?.aborted) return;
+      if (!needsPassword && responseStatus(caught) === 401) {
+        setNeedsPassword(true);
+        onUsesPassword();
+        setError('Enter your current password to confirm this change.');
+        setPending(false);
+        return;
+      }
+      const publicError = accountActionError(caught, 'Unable to change the email.', {
+        401: 'Current password is incorrect.',
+        409: 'An account with that email already exists.',
+      });
+      setError(publicError.message);
+      onError?.(publicError);
+      setPending(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={close} maxWidth="sm" fullWidth aria-labelledby={titleId} aria-describedby={descriptionId}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <DialogTitle id={titleId}>Change email</DialogTitle>
+        <DialogContent>
+          <DialogContentText id={descriptionId}>
+            We'll email a confirmation link to the new address. <strong>{user.email}</strong> stays on this account until
+            you open that link.
+          </DialogContentText>
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          )}
+          <TextField
+            autoFocus
+            margin="dense"
+            label="New email"
+            type="email"
+            fullWidth
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            disabled={pending}
+            autoComplete="email"
+            required
+            error={same}
+            helperText={same ? 'That is already your email address.' : undefined}
+            sx={{ mt: 2 }}
+          />
+          {needsPassword && (
+            <TextField
+              margin="dense"
+              label="Current password"
+              type="password"
+              fullWidth
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              disabled={pending}
+              autoComplete="current-password"
+              required
+              helperText="Required to confirm this change."
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button type="button" onClick={close} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="contained" disabled={pending || !ready}>
+            {pending ? 'Sending...' : 'Send confirmation link'}
+          </Button>
+        </DialogActions>
+      </form>
+    </Dialog>
   );
 }
 
