@@ -73,7 +73,8 @@ To override the default card layout, pass **`className`** or **`sx`** (MUI's sty
 
 ## Features
 
-- View the account email, verification status, signup source, and sign-in methods
+- View the account email, display name, language, time zone, verification status, signup source, and sign-in methods
+- Edit display name, language, and time zone from an explicit Edit action. Language and time zone are searchable lists, not free text
 - JWT authentication support
 - Responsive design
 - Material-UI components

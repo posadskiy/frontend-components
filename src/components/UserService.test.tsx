@@ -5,12 +5,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { requestTimeoutMs } from '../api';
 import { UserService } from './UserService';
 
-const { get, post, remove } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), remove: vi.fn() }));
+const { get, post, patch, remove } = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  patch: vi.fn(),
+  remove: vi.fn(),
+}));
 
 vi.mock('axios', () => ({
   default: {
     get,
     post,
+    patch,
     delete: remove,
     isAxiosError: (error: unknown) =>
       Boolean(error && typeof error === 'object' && (error as { isAxiosError?: boolean }).isAxiosError),
@@ -37,6 +43,7 @@ describe('UserService', () => {
     localStorage.clear();
     get.mockReset();
     post.mockReset();
+    patch.mockReset();
     remove.mockReset();
   });
 
@@ -88,6 +95,10 @@ describe('UserService', () => {
     expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Resend confirmation email' })).not.toBeInTheDocument();
     expect(screen.queryByText(/username/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit profile' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Display name' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Time zone' })).not.toBeInTheDocument();
   });
 
   it('shows a load error when the profile payload is not safe to render', async () => {
@@ -118,6 +129,49 @@ describe('UserService', () => {
       expect.objectContaining({
         headers: { Authorization: 'Bearer super-secret' },
         signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it('keeps language and time zone as searchable choices until save', async () => {
+    const user = userEvent.setup();
+    get.mockResolvedValue({
+      data: { ...profile, displayName: 'Ada', locale: 'de', timeZone: 'Europe/Berlin' },
+    });
+    patch.mockResolvedValue({
+      data: { ...profile, displayName: 'Ada Lovelace', locale: 'de', timeZone: 'Europe/Berlin' },
+    });
+    renderProfile();
+
+    expect(await screen.findByRole('heading', { name: 'Ada' })).toBeInTheDocument();
+    expect(screen.getByText('Deutsch')).toBeInTheDocument();
+    expect(screen.getByText(/Berlin/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Edit profile' }));
+    const name = screen.getByRole('textbox', { name: 'Display name' });
+    expect(name).toHaveValue('Ada');
+    expect(screen.getByRole('combobox', { name: 'Language' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Time zone' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('textbox', { name: 'Display name' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Edit profile' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Display name' }));
+    await user.type(screen.getByRole('textbox', { name: 'Display name' }), 'Ada Lovelace');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Profile saved.')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Display name' })).not.toBeInTheDocument();
+    expect(patch).toHaveBeenCalledWith(
+      'http://localhost:8095/v0/user/me',
+      { displayName: 'Ada Lovelace', locale: 'de', timeZone: 'Europe/Berlin', avatarUrl: undefined },
+      expect.objectContaining({
+        headers: {
+          Authorization: 'Bearer super-secret',
+          'Content-Type': 'application/json',
+        },
       }),
     );
   });

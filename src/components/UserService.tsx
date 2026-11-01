@@ -1,6 +1,7 @@
-import { useActionState, useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useActionState, useEffect, useEffectEvent, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   Alert,
+  Autocomplete,
   Avatar,
   Box,
   Button,
@@ -21,6 +22,7 @@ import {
   type Theme,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import MarkEmailUnreadIcon from '@mui/icons-material/MarkEmailUnread';
 import {
   defaultVerificationEmailPath,
@@ -35,6 +37,15 @@ import {
   userPaths,
   type UserRequest,
 } from '../api';
+import {
+  languageLabel,
+  languageOptions,
+  matchesOption,
+  timeZoneLabel,
+  timeZoneOptions,
+  uiLocale,
+  type RegionOption,
+} from '../regional';
 import type { User, UserServiceProps } from '../types';
 
 const defaultCardSx = {
@@ -232,7 +243,7 @@ export function UserService({
       <CardContent>
         <Stack spacing={2.5} divider={showFacts || showActions ? <Divider /> : undefined}>
           <ProfileHeader user={user} />
-          <ProfileEditor
+          <ProfileSection
             user={user}
             endpoint={endpoint}
             product={product}
@@ -285,7 +296,7 @@ function StatusCard({ className, sx, children }: { className?: string; sx: SxPro
   );
 }
 
-function ProfileEditor({
+function ProfileSection({
   user,
   endpoint,
   product,
@@ -300,18 +311,120 @@ function ProfileEditor({
   onSaved: (user: User) => void;
   onError?: (error: Error) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  if (!editing) {
+    return (
+      <Stack spacing={2}>
+        {notice && <Alert severity="success">{notice}</Alert>}
+        <ProfileSummary user={user} onEdit={() => setEditing(true)} />
+      </Stack>
+    );
+  }
+
+  return (
+    <ProfileEditor
+      user={user}
+      endpoint={endpoint}
+      product={product}
+      signalRef={signalRef}
+      onCancel={() => setEditing(false)}
+      onSaved={(next) => {
+        onSaved(next);
+        setNotice('Profile saved.');
+        setEditing(false);
+      }}
+      onError={onError}
+    />
+  );
+}
+
+function shownOrUnset(value: string): string {
+  return value.trim() || 'Not set';
+}
+
+function ProfileSummary({ user, onEdit }: { user: User; onEdit: () => void }) {
+  const locale = uiLocale(user.locale);
+  const language = user.locale?.trim() ? languageLabel(user.locale, locale) : '';
+  const zone = user.timeZone?.trim() ? timeZoneLabel(user.timeZone, locale) : '';
+  return (
+    <Stack spacing={2}>
+      <Fact label="Display name">{shownOrUnset(user.displayName ?? '')}</Fact>
+      <Fact label="Language">{shownOrUnset(language)}</Fact>
+      <Fact label="Time zone">{shownOrUnset(zone)}</Fact>
+      <Box>
+        <Button type="button" variant="outlined" startIcon={<EditIcon />} onClick={onEdit}>
+          Edit profile
+        </Button>
+      </Box>
+    </Stack>
+  );
+}
+
+function RegionSelect({
+  label,
+  options,
+  value,
+  onChange,
+  disabled,
+  group,
+}: {
+  label: string;
+  options: RegionOption[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled: boolean;
+  group?: boolean;
+}) {
+  const selected = options.find((option) => option.id === value) ?? null;
+  return (
+    <Autocomplete
+      options={options}
+      value={selected}
+      groupBy={group ? (option) => option.group ?? '' : undefined}
+      onChange={(_event, option) => onChange(option?.id ?? '')}
+      getOptionLabel={(option) => option.label}
+      isOptionEqualToValue={(left, right) => left.id === right.id}
+      filterOptions={(available, state) => matchesOption(available, state.inputValue)}
+      disabled={disabled}
+      autoHighlight
+      openOnFocus
+      renderInput={(params) => <TextField {...params} label={label} />}
+    />
+  );
+}
+
+function ProfileEditor({
+  user,
+  endpoint,
+  product,
+  signalRef,
+  onCancel,
+  onSaved,
+  onError,
+}: {
+  user: User;
+  endpoint: UserEndpoint;
+  product?: 'grammarbar' | 'costy' | 'repeaty';
+  signalRef: RefObject<AbortSignal | null>;
+  onCancel: () => void;
+  onSaved: (user: User) => void;
+  onError?: (error: Error) => void;
+}) {
+  const localeForLabels = uiLocale(user.locale);
+  const languages = useMemo(() => languageOptions(localeForLabels, user.locale), [localeForLabels, user.locale]);
+  const zones = useMemo(() => timeZoneOptions(localeForLabels, user.timeZone), [localeForLabels, user.timeZone]);
   const [displayName, setDisplayName] = useState(user.displayName ?? '');
   const [locale, setLocale] = useState(user.locale ?? '');
   const [timeZone, setTimeZone] = useState(user.timeZone ?? '');
   const [marketing, setMarketing] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
     setSaving(true);
     setError(null);
-    setMessage(null);
     try {
       const next = await updateProfile(
         { ...endpoint, signal: signalRef.current ?? undefined },
@@ -321,7 +434,6 @@ function ProfileEditor({
         await saveProductPreference({ ...endpoint, signal: signalRef.current ?? undefined }, product, marketing);
       }
       onSaved(next);
-      setMessage('Profile saved.');
     } catch (caught) {
       const publicError = toPublicError(caught, 'Unable to save the profile.');
       setError(publicError.message);
@@ -333,19 +445,27 @@ function ProfileEditor({
 
   return (
     <Stack spacing={1.5}>
-      {message && <Alert severity="success">{message}</Alert>}
       {error && <Alert severity="error">{error}</Alert>}
-      <TextField label="Display name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} fullWidth />
-      <TextField label="Locale" value={locale} onChange={(event) => setLocale(event.target.value)} fullWidth />
-      <TextField label="Time zone" value={timeZone} onChange={(event) => setTimeZone(event.target.value)} fullWidth />
+      <TextField
+        label="Display name"
+        value={displayName}
+        onChange={(event) => setDisplayName(event.target.value)}
+        fullWidth
+        disabled={saving}
+      />
+      <RegionSelect label="Language" options={languages} value={locale} onChange={setLocale} disabled={saving} />
+      <RegionSelect label="Time zone" options={zones} value={timeZone} onChange={setTimeZone} disabled={saving} group />
       {product && (
-        <Button type="button" variant="text" onClick={() => setMarketing((current) => !current)}>
+        <Button type="button" variant="text" onClick={() => setMarketing((current) => !current)} disabled={saving}>
           {marketing ? 'Product email on' : 'Product email off'}
         </Button>
       )}
-      <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+        <Button type="button" variant="outlined" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
         <Button type="button" variant="contained" onClick={save} disabled={saving}>
-          {saving ? 'Saving...' : 'Save profile'}
+          {saving ? 'Saving...' : 'Save'}
         </Button>
       </Box>
     </Stack>
