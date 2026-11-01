@@ -2,6 +2,7 @@ import { MantineProvider } from '@mantine/core';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { browserRegion } from '../region';
 import { Register } from './Register';
 
 const { post } = vi.hoisted(() => ({ post: vi.fn() }));
@@ -58,6 +59,7 @@ describe('Register', () => {
         email: 'ada@example.com',
         password: 'secret12ab',
         linkOrigin: window.location.origin,
+        ...browserRegion(),
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );

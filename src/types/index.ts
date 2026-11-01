@@ -48,7 +48,12 @@ export type OAuthProviderOption = OAuthProvider | { id: OAuthProvider; label?: s
 export interface AuthApi {
   /** Used when `apiUrl` is omitted. Password login posts through `apiUrl` when that is set. */
   login?: (email: string, password: string, linkOrigin: string, captchaToken?: string) => Promise<AuthResponse>;
-  register?: (email: string, password: string, linkOrigin: string) => Promise<RegisterResponse>;
+  register?: (
+    email: string,
+    password: string,
+    linkOrigin: string,
+    region?: { locale?: string; timeZone?: string },
+  ) => Promise<RegisterResponse>;
   forgotPassword?: (email: string, linkOrigin: string) => Promise<void>;
   resetPassword?: (token: string, password: string) => Promise<void>;
 }

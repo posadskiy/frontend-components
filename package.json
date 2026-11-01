@@ -1,6 +1,6 @@
 {
   "name": "auth-component-react",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "React authentication components (Login, Register, and password reset) built with Mantine UI",
   "type": "module",
   "main": "./dist/index.js",

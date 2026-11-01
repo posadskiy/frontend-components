@@ -4,6 +4,7 @@ import axios from 'axios';
 import { captchaIsRequired, mapAuthError } from '../errors';
 import { resolveLabels } from '../labels';
 import { resolveLinkOrigin } from '../linkOrigin';
+import { browserRegion } from '../region';
 import { resolveProviders } from '../oauth/resolveProviders';
 import type { AuthResponse, LoginProps, RegisterProps, RegisterResponse } from '../types';
 import { isAuthResponse, isEmailAddress, isRegisterResponse, passwordIssue } from '../validate';
@@ -168,9 +169,16 @@ export function CredentialsForm(props: CredentialsFormProps) {
         }
         const linkOrigin = resolveLinkOrigin(linkOriginProp);
         const captchaToken = getCaptchaToken ? await getCaptchaToken() : undefined;
-        const payload = { email: trimmedEmail, password, linkOrigin, ...(captchaToken ? { captchaToken } : {}) };
+        const region = browserRegion();
+        const payload = {
+          email: trimmedEmail,
+          password,
+          linkOrigin,
+          ...region,
+          ...(captchaToken ? { captchaToken } : {}),
+        };
         const response = authApi?.register
-          ? await authApi.register(payload.email, payload.password, payload.linkOrigin)
+          ? await authApi.register(payload.email, payload.password, payload.linkOrigin, region)
           : (
               await axios.post<RegisterResponse>(apiUrl as string, payload, { signal: controller.signal })
             ).data;

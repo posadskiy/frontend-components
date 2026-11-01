@@ -1,4 +1,5 @@
 import { navigation } from '../navigation';
+import { browserRegion, type BrowserRegion } from '../region';
 import type { OAuthProvider } from '../types';
 import { createPkceVerifier, pkceChallenge, rememberPkceVerifier } from './pkce';
 
@@ -36,11 +37,14 @@ export function buildAuthorizeUrl(
   provider: OAuthProvider,
   returnTo: string,
   codeChallenge: string,
+  region: BrowserRegion = {},
 ): string {
   const base = oauthApiUrl.replace(/\/$/, '');
   const url = new URL(`${base}/oauth2/authorize/${provider}`);
   url.searchParams.set('return_to', returnTo);
   url.searchParams.set('code_challenge', codeChallenge);
+  if (region.locale) url.searchParams.set('locale', region.locale);
+  if (region.timeZone) url.searchParams.set('time_zone', region.timeZone);
   return url.toString();
 }
 
@@ -99,6 +103,7 @@ export async function beginOAuthAuthorization(options: {
     provider,
     resolveOAuthReturnTo(oauthReturnTo, allowedReturnToHosts),
     challenge,
+    browserRegion(),
   );
   assertSafeAuthorizationUri(url, allowedOAuthHosts);
   rememberPkceVerifier(verifier);
