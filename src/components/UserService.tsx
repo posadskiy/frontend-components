@@ -49,7 +49,7 @@ import {
 import type { User, UserServiceProps } from '../types';
 
 const defaultCardSx = {
-  maxWidth: 560,
+  maxWidth: 720,
   width: { xs: 'calc(100% - 32px)', sm: '100%' },
   mx: 'auto',
   mt: 4,
@@ -241,8 +241,7 @@ export function UserService({
   return (
     <Card className={className} sx={cardSx}>
       <CardContent>
-        <Stack spacing={2.5} divider={showFacts || showActions ? <Divider /> : undefined}>
-          <ProfileHeader user={user} />
+        <Stack spacing={3} divider={showFacts || showActions ? <Divider /> : undefined}>
           <ProfileSection
             user={user}
             endpoint={endpoint}
@@ -314,29 +313,44 @@ function ProfileSection({
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  if (!editing) {
-    return (
-      <Stack spacing={2}>
-        {notice && <Alert severity="success">{notice}</Alert>}
-        <ProfileSummary user={user} onEdit={() => setEditing(true)} />
-      </Stack>
-    );
-  }
-
   return (
-    <ProfileEditor
-      user={user}
-      endpoint={endpoint}
-      product={product}
-      signalRef={signalRef}
-      onCancel={() => setEditing(false)}
-      onSaved={(next) => {
-        onSaved(next);
-        setNotice('Profile saved.');
-        setEditing(false);
-      }}
-      onError={onError}
-    />
+    <Stack spacing={2.5}>
+      {notice && <Alert severity="success">{notice}</Alert>}
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <ProfileHeader user={user} />
+        </Box>
+        {!editing && (
+          <Button
+            type="button"
+            variant="outlined"
+            size="small"
+            startIcon={<EditIcon />}
+            onClick={() => setEditing(true)}
+            sx={{ flexShrink: 0, mt: 0.5 }}
+          >
+            Edit profile
+          </Button>
+        )}
+      </Box>
+      {editing ? (
+        <ProfileEditor
+          user={user}
+          endpoint={endpoint}
+          product={product}
+          signalRef={signalRef}
+          onCancel={() => setEditing(false)}
+          onSaved={(next) => {
+            onSaved(next);
+            setNotice('Profile saved.');
+            setEditing(false);
+          }}
+          onError={onError}
+        />
+      ) : (
+        <ProfileDetails user={user} />
+      )}
+    </Stack>
   );
 }
 
@@ -344,21 +358,16 @@ function shownOrUnset(value: string): string {
   return value.trim() || 'Not set';
 }
 
-function ProfileSummary({ user, onEdit }: { user: User; onEdit: () => void }) {
+function ProfileDetails({ user }: { user: User }) {
   const locale = uiLocale(user.locale);
   const language = user.locale?.trim() ? languageLabel(user.locale, locale) : '';
   const zone = user.timeZone?.trim() ? timeZoneLabel(user.timeZone, locale) : '';
   return (
-    <Stack spacing={2}>
+    <DetailList>
       <Fact label="Display name">{shownOrUnset(user.displayName ?? '')}</Fact>
       <Fact label="Language">{shownOrUnset(language)}</Fact>
       <Fact label="Time zone">{shownOrUnset(zone)}</Fact>
-      <Box>
-        <Button type="button" variant="outlined" startIcon={<EditIcon />} onClick={onEdit}>
-          Edit profile
-        </Button>
-      </Box>
-    </Stack>
+    </DetailList>
   );
 }
 
@@ -390,6 +399,7 @@ function RegionSelect({
       disabled={disabled}
       autoHighlight
       openOnFocus
+      fullWidth
       renderInput={(params) => <TextField {...params} label={label} />}
     />
   );
@@ -444,23 +454,33 @@ function ProfileEditor({
   };
 
   return (
-    <Stack spacing={1.5}>
-      {error && <Alert severity="error">{error}</Alert>}
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+        gap: 2,
+        alignItems: 'start',
+      }}
+    >
+      {error && <Alert severity="error" sx={{ gridColumn: '1 / -1' }}>{error}</Alert>}
       <TextField
         label="Display name"
         value={displayName}
         onChange={(event) => setDisplayName(event.target.value)}
         fullWidth
         disabled={saving}
+        sx={{ gridColumn: '1 / -1' }}
       />
       <RegionSelect label="Language" options={languages} value={locale} onChange={setLocale} disabled={saving} />
       <RegionSelect label="Time zone" options={zones} value={timeZone} onChange={setTimeZone} disabled={saving} group />
       {product && (
-        <Button type="button" variant="text" onClick={() => setMarketing((current) => !current)} disabled={saving}>
-          {marketing ? 'Product email on' : 'Product email off'}
-        </Button>
+        <Box sx={{ gridColumn: '1 / -1' }}>
+          <Button type="button" variant="text" onClick={() => setMarketing((current) => !current)} disabled={saving}>
+            {marketing ? 'Product email on' : 'Product email off'}
+          </Button>
+        </Box>
       )}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+      <Box sx={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
         <Button type="button" variant="outlined" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
@@ -468,7 +488,7 @@ function ProfileEditor({
           {saving ? 'Saving...' : 'Save'}
         </Button>
       </Box>
-    </Stack>
+    </Box>
   );
 }
 
@@ -528,12 +548,8 @@ function ProfileFacts({ user }: { user: User }) {
   const providers = profileProviders(user);
 
   return (
-    <Stack spacing={2}>
-      {createdVia && (
-        <Fact label="Signed up">
-          <Typography variant="body1">{createdVia}</Typography>
-        </Fact>
-      )}
+    <DetailList>
+      {createdVia && <Fact label="Signed up">{createdVia}</Fact>}
       {providers.length > 0 && (
         <Fact label="Sign-in methods">
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -543,17 +559,52 @@ function ProfileFacts({ user }: { user: User }) {
           </Box>
         </Fact>
       )}
-    </Stack>
+    </DetailList>
+  );
+}
+
+function DetailList({ children }: { children: ReactNode }) {
+  return (
+    <Box
+      component="dl"
+      sx={{
+        m: 0,
+        '& > :not(:last-child)': {
+          borderBottom: 1,
+          borderColor: 'divider',
+        },
+      }}
+    >
+      {children}
+    </Box>
   );
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
+  const unset = children === 'Not set';
   return (
-    <Box>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: '1fr', sm: 'minmax(9.5rem, 32%) minmax(0, 1fr)' },
+        columnGap: 3,
+        rowGap: 0.25,
+        alignItems: 'center',
+        py: 1.5,
+      }}
+    >
+      <Typography component="dt" variant="body2" color="text.secondary">
         {label}
       </Typography>
-      {children}
+      <Box component="dd" sx={{ m: 0, minWidth: 0 }}>
+        {typeof children === 'string' ? (
+          <Typography variant="body1" color={unset ? 'text.secondary' : 'text.primary'} sx={{ fontWeight: unset ? 400 : 500 }}>
+            {children}
+          </Typography>
+        ) : (
+          children
+        )}
+      </Box>
     </Box>
   );
 }

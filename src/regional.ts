@@ -41,17 +41,29 @@ export function uiLocale(preferred?: string | null): string {
   return LOCALE_TAG.test(candidate) ? candidate : 'en';
 }
 
+function isReadableLanguageLabel(label: string, id: string): boolean {
+  const name = label.trim();
+  const code = id.trim();
+  return name.length > 0 && name.toLowerCase() !== code.toLowerCase();
+}
+
 export function languageLabel(tag: string, locale: string): string {
   const trimmed = tag.trim();
   if (!trimmed) return '';
   try {
     const native = new Intl.DisplayNames([trimmed, locale], { type: 'language' }).of(trimmed);
     const current = new Intl.DisplayNames([locale], { type: 'language' }).of(trimmed);
-    if (native && current && native.toLowerCase() !== current.toLowerCase() && native !== trimmed) {
+    if (
+      native &&
+      current &&
+      native.toLowerCase() !== current.toLowerCase() &&
+      isReadableLanguageLabel(native, trimmed) &&
+      isReadableLanguageLabel(current, trimmed)
+    ) {
       return `${native} — ${current}`;
     }
-    if (native && native !== trimmed) return native;
-    if (current && current !== trimmed) return current;
+    if (native && isReadableLanguageLabel(native, trimmed)) return native;
+    if (current && isReadableLanguageLabel(current, trimmed)) return current;
   } catch {
     // An unrecognized tag is shown as stored.
   }
@@ -60,10 +72,16 @@ export function languageLabel(tag: string, locale: string): string {
 
 export function languageOptions(locale: string, current?: string | null): RegionOption[] {
   const ids = new Set<string>(LANGUAGE_CODES);
-  const extra = current?.trim();
+  const extra = current?.trim() ?? '';
   if (extra) ids.add(extra);
   return [...ids]
-    .map((id) => ({ id, label: languageLabel(id, locale) }))
+    .flatMap((id) => {
+      const label = languageLabel(id, locale);
+      // Browsers omit names for some ISO codes and hand back "ch", "cr", and so on.
+      // Keep a saved tag so the current choice stays visible, and hide the rest.
+      if (id !== extra && !isReadableLanguageLabel(label, id)) return [];
+      return [{ id, label }];
+    })
     .sort((left, right) => left.label.localeCompare(right.label, locale));
 }
 

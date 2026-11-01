@@ -151,8 +151,15 @@ describe('UserService', () => {
     await user.click(screen.getByRole('button', { name: 'Edit profile' }));
     const name = screen.getByRole('textbox', { name: 'Display name' });
     expect(name).toHaveValue('Ada');
-    expect(screen.getByRole('combobox', { name: 'Language' })).toBeInTheDocument();
+    const language = screen.getByRole('combobox', { name: 'Language' });
+    expect(language).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Time zone' })).toBeInTheDocument();
+    await user.click(language);
+    const languageOptions = screen.getAllByRole('option');
+    expect(languageOptions.length).toBeGreaterThan(10);
+    expect(languageOptions.some((option) => option.textContent === 'ch')).toBe(false);
+    expect(languageOptions.some((option) => /German|Deutsch/.test(option.textContent ?? ''))).toBe(true);
+    await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('textbox', { name: 'Display name' })).not.toBeInTheDocument();
