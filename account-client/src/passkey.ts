@@ -99,22 +99,70 @@ export function credentialToJson(credential: Credential): unknown {
   };
 }
 
+export interface PasskeyCall {
+  /** `conditional` waits for autofill, or asks the password manager to create a passkey without a modal. */
+  mediation?: CredentialMediationRequirement;
+  signal?: AbortSignal;
+}
+
 export function passkeysSupported(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.credentials?.create === 'function';
 }
 
-export async function registerPasskey(client: AccountClient, label?: string): Promise<void> {
-  if (!passkeysSupported()) throw new Error('This browser cannot create a passkey.');
-  const ceremony = await client.passkeyOptions();
-  const credential = await navigator.credentials.create({ publicKey: toCreationOptions(ceremony.publicKey) });
-  if (!credential) throw new Error('Passkey registration was cancelled.');
-  await client.finishPasskeyRegistration(ceremony.challengeId, credentialToJson(credential), label);
+/** Browser support for passkey autofill and silent creation after a password login. */
+export async function passkeyCapabilities(): Promise<{ conditionalGet: boolean; conditionalCreate: boolean }> {
+  const api = globalThis.PublicKeyCredential as
+    | { getClientCapabilities?: () => Promise<Record<string, boolean | undefined>> }
+    | undefined;
+  if (!api || typeof api.getClientCapabilities !== 'function') {
+    return { conditionalGet: false, conditionalCreate: false };
+  }
+  try {
+    const caps = await api.getClientCapabilities();
+    return {
+      conditionalGet: Boolean(caps.conditionalGet || caps.conditionalMediation),
+      conditionalCreate: Boolean(caps.conditionalCreate),
+    };
+  } catch {
+    return { conditionalGet: false, conditionalCreate: false };
+  }
 }
 
-export async function loginWithPasskey(client: AccountClient, email?: string, linkOrigin?: string) {
+/** Cancellation and “nothing to do” results. Callers should not show these. */
+export function isSilentPasskeyError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (
+    error.name === 'NotAllowedError' ||
+    error.name === 'AbortError' ||
+    error.name === 'InvalidStateError' ||
+    error.name === 'NotSupportedError'
+  ) {
+    return true;
+  }
+  return error.message === 'Passkey sign-in was cancelled.' || error.message === 'Passkey registration was cancelled.';
+}
+
+export async function registerPasskey(client: AccountClient, label?: string, call?: PasskeyCall): Promise<void> {
+  if (!passkeysSupported()) throw new Error('This browser cannot create a passkey.');
+  const ceremony = await client.passkeyOptions(call?.signal);
+  // Conditional create uses `mediation` on create(); DOM typings still omit it.
+  const credential = await navigator.credentials.create({
+    publicKey: toCreationOptions(ceremony.publicKey),
+    mediation: call?.mediation,
+    signal: call?.signal,
+  } as CredentialCreationOptions);
+  if (!credential) throw new Error('Passkey registration was cancelled.');
+  await client.finishPasskeyRegistration(ceremony.challengeId, credentialToJson(credential), label, call?.signal);
+}
+
+export async function loginWithPasskey(client: AccountClient, email?: string, linkOrigin?: string, call?: PasskeyCall) {
   if (!passkeysSupported()) throw new Error('This browser cannot use a passkey.');
-  const ceremony = await client.passkeyLoginOptions(email);
-  const credential = await navigator.credentials.get({ publicKey: toRequestOptions(ceremony.publicKey) });
+  const ceremony = await client.passkeyLoginOptions(email, call?.signal);
+  const credential = await navigator.credentials.get({
+    publicKey: toRequestOptions(ceremony.publicKey),
+    mediation: call?.mediation,
+    signal: call?.signal,
+  });
   if (!credential) throw new Error('Passkey sign-in was cancelled.');
-  return client.finishPasskeyLogin(ceremony.challengeId, credentialToJson(credential), linkOrigin);
+  return client.finishPasskeyLogin(ceremony.challengeId, credentialToJson(credential), linkOrigin, call?.signal);
 }
