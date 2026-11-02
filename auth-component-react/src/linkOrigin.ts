@@ -42,6 +42,9 @@ export function resolveAccountOrigin(accountApiUrl?: string, apiUrl?: string): s
   return `${url.origin}${path === '/' ? '' : path}`;
 }
 
-export function accountEndpoint(origin: string, path: '/account/forgot-password' | '/account/reset-password'): string {
+export function accountEndpoint(
+  origin: string,
+  path: '/account/forgot-password' | '/account/reset-password' | '/account/verification-email',
+): string {
   return `${origin}${path}`;
 }

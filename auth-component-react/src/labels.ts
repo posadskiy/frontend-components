@@ -9,6 +9,10 @@ export interface AuthLabels {
   createAccount: string;
   haveAccount: string;
   signIn: string;
+  checkEmailTitle: string;
+  checkEmailBody: string;
+  checkEmailResend: string;
+  checkEmailResent: string;
   orContinueWithEmail: string;
   confirmPassword: string;
   passwordTooShort: string;
@@ -66,6 +70,10 @@ export const defaultLabels: AuthLabels = {
   createAccount: 'Create account',
   haveAccount: 'Already have an account?',
   signIn: 'Sign in',
+  checkEmailTitle: 'Check your email',
+  checkEmailBody: 'We sent a confirmation link to {email}. Open it to activate your account, then sign in.',
+  checkEmailResend: 'Resend confirmation email',
+  checkEmailResent: 'If this account needs confirmation, we sent another link.',
   orContinueWithEmail: 'Or continue with email',
   confirmPassword: 'Confirm password',
   passwordTooShort: 'Password must be 10–72 characters.',

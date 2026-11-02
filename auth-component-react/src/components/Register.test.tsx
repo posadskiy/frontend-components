@@ -82,14 +82,21 @@ describe('Register', () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it('sends only the site origin and treats emailVerified false as a created account', async () => {
+  it('sends only the site origin and shows check-email until the user continues', async () => {
     const user = userEvent.setup();
     const onSuccess = vi.fn();
+    const onSwitchToLogin = vi.fn();
     post.mockResolvedValue({ status: 201, data: { emailVerified: false } });
 
     render(
       <MantineProvider>
-        <Register apiUrl="http://localhost:8095/signup" linkOrigin="https://grammarbar.com/" onSuccess={onSuccess} />
+        <Register
+          apiUrl="http://localhost:8095/signup"
+          accountApiUrl="http://localhost:8100"
+          linkOrigin="https://grammarbar.com/"
+          onSuccess={onSuccess}
+          onSwitchToLogin={onSwitchToLogin}
+        />
       </MantineProvider>,
     );
 
@@ -98,12 +105,29 @@ describe('Register', () => {
     await user.type(screen.getByLabelText(/confirm password/i), 'secret12ab');
     await user.click(screen.getByRole('button', { name: 'Register' }));
 
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith({ emailVerified: false }));
+    expect(await screen.findByRole('heading', { name: 'Check your email' })).toBeInTheDocument();
+    expect(screen.getByText(/ada@example.com/)).toBeInTheDocument();
+    expect(onSuccess).not.toHaveBeenCalled();
     expect(post).toHaveBeenCalledWith(
       'http://localhost:8095/signup',
       expect.objectContaining({ linkOrigin: 'https://grammarbar.com' }),
       expect.any(Object),
     );
+
+    post.mockResolvedValue({ status: 204 });
+    await user.click(screen.getByRole('button', { name: 'Resend confirmation email' }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        'http://localhost:8100/account/verification-email',
+        expect.objectContaining({ email: 'ada@example.com', linkOrigin: 'https://grammarbar.com' }),
+        expect.any(Object),
+      ),
+    );
+    expect(await screen.findByText(/we sent another link/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Back to sign in' }));
+    expect(onSuccess).toHaveBeenCalledWith({ emailVerified: false });
+    expect(onSwitchToLogin).toHaveBeenCalled();
   });
 
   it('does not post when linkOrigin includes a path', async () => {

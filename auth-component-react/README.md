@@ -62,6 +62,8 @@ Pass `turnstileSiteKey` to render a Cloudflare Turnstile widget above the submit
 
 Registration posts `{ email, password, linkOrigin, locale, timeZone }` to `apiUrl`. `locale` and `timeZone` are taken from the browser and stored only when the account is created. OAuth sends the same values as `locale` and `time_zone` on the authorize request. `linkOrigin` is the site origin only, such as `https://grammarbar.com`, with no path, query, hash, or custom scheme. It defaults to `window.location.origin`. Pass `linkOrigin` when the public origin differs from the page origin. The password must be 10–72 characters and must not match the email. A 201 response with `{ emailVerified: false }` means the account was created. A mail failure still creates the account, so a 201 is success.
 
+When `emailVerified` is false, `Register` stays on a **Check your email** panel instead of calling `onSuccess` immediately. Pass `accountApiUrl` (or an `apiUrl` that resolves to auth-service) so **Resend confirmation email** can post `{ email, linkOrigin, captchaToken? }` to `/account/verification-email`. **Back to sign in** then calls `onSuccess` and `onSwitchToLogin`.
+
 OAuth does not derive its base URL from `apiUrl`. Pass `oauthApiUrl`. A provider button navigates the browser to `${oauthApiUrl}/oauth2/authorize/{provider}?return_to=...` so the auth host can set its browser cookie. `oauthReturnTo` is where that host should send the browser back; it receives only `?code=`. A relative return URL stays on the current origin. An absolute return URL on another host is rejected unless that host is listed in `allowedReturnToHosts`. The auth host must be HTTPS, or HTTP on localhost.
 
 ### Custom API

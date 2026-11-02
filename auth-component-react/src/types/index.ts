@@ -58,6 +58,7 @@ export interface AuthApi {
     region?: { locale?: string; timeZone?: string },
   ) => Promise<RegisterResponse>;
   forgotPassword?: (email: string, linkOrigin: string, captchaToken?: string) => Promise<void>;
+  resendVerificationEmail?: (email: string, linkOrigin: string, captchaToken?: string) => Promise<void>;
   resetPassword?: (token: string, password: string) => Promise<void>;
 }
 

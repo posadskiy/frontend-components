@@ -3,7 +3,7 @@ import { Alert, Anchor, Divider, Paper, PasswordInput, Stack, Text, TextInput, T
 import axios from 'axios';
 import { captchaIsRequired, mapAuthError } from '../errors';
 import { resolveLabels } from '../labels';
-import { resolveLinkOrigin } from '../linkOrigin';
+import { accountEndpoint, resolveAccountOrigin, resolveLinkOrigin } from '../linkOrigin';
 import { browserRegion } from '../region';
 import { resolveProviders } from '../oauth/resolveProviders';
 import type { AuthResponse, LoginProps, RegisterProps, RegisterResponse } from '../types';
@@ -16,11 +16,14 @@ type CredentialsFormProps =
   | (LoginProps & { mode: 'login'; onForgotPassword?: () => void })
   | (RegisterProps & { mode: 'register' });
 
+type PendingVerification = { email: string; response: RegisterResponse };
+
 export function CredentialsForm(props: CredentialsFormProps) {
   const account = props.mode === 'login' ? props.accountClient : undefined;
   const {
     mode,
     apiUrl,
+    accountApiUrl,
     authApi,
     oauthApiUrl,
     oauthReturnTo,
@@ -59,6 +62,9 @@ export function CredentialsForm(props: CredentialsFormProps) {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [pendingVerify, setPendingVerify] = useState<PendingVerification | null>(null);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [resendPending, setResendPending] = useState(false);
   const mountedRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -204,6 +210,11 @@ export function CredentialsForm(props: CredentialsFormProps) {
             ).data;
         if (!mountedRef.current) return;
         if (!isRegisterResponse(response)) throw new Error(labels.genericError);
+        if (!response.emailVerified) {
+          setPendingVerify({ email: trimmedEmail, response });
+          setResendStatus(null);
+          return;
+        }
         props.onSuccess?.(response);
       }
     } catch (caught) {
@@ -217,6 +228,77 @@ export function CredentialsForm(props: CredentialsFormProps) {
       if (mountedRef.current) setSubmitting(false);
     }
   };
+
+
+  const leaveVerifyPending = () => {
+    const pending = pendingVerify;
+    if (!pending || props.mode !== 'register') return;
+    setPendingVerify(null);
+    props.onSuccess?.(pending.response);
+    props.onSwitchToLogin?.();
+  };
+
+  const resendVerification = async () => {
+    if (!pendingVerify || resendPending) return;
+    setResendPending(true);
+    setFormError(null);
+    setResendStatus(null);
+    try {
+      const linkOrigin = resolveLinkOrigin(linkOriginProp);
+      const captchaToken = resolveCaptchaToken ? await resolveCaptchaToken() : undefined;
+      if (authApi?.resendVerificationEmail) {
+        await authApi.resendVerificationEmail(pendingVerify.email, linkOrigin, captchaToken);
+      } else {
+        const origin = resolveAccountOrigin(accountApiUrl, apiUrl);
+        await axios.post(
+          accountEndpoint(origin, '/account/verification-email'),
+          { email: pendingVerify.email, linkOrigin, ...(captchaToken ? { captchaToken } : {}) },
+          { withCredentials: true },
+        );
+      }
+      if (!mountedRef.current) return;
+      setResendStatus(labels.checkEmailResent);
+    } catch (caught) {
+      if (!mountedRef.current) return;
+      const mapped = mapAuthError(caught, 'forgot', labels);
+      setFormError(mapped.message);
+      onError?.(mapped.error);
+    } finally {
+      if (mountedRef.current) setResendPending(false);
+    }
+  };
+
+  if (pendingVerify) {
+    return (
+      <Paper radius="md" p="xl" withBorder className={className} style={{ width: '100%', ...style }}>
+        <Title order={2} mb="sm">
+          {labels.checkEmailTitle}
+        </Title>
+        <Text c="dimmed" mb="xl">
+          {labels.checkEmailBody.replace('{email}', pendingVerify.email)}
+        </Text>
+        <Stack>
+          {formError && (
+            <Alert color="red" role="alert">
+              {formError}
+            </Alert>
+          )}
+          {resendStatus && (
+            <Alert color="green" role="status">
+              {resendStatus}
+            </Alert>
+          )}
+          {captchaField}
+          <Button type="button" loading={resendPending} fullWidth onClick={() => void resendVerification()}>
+            {labels.checkEmailResend}
+          </Button>
+          <Button type="button" variant="subtle" fullWidth disabled={resendPending} onClick={leaveVerifyPending}>
+            {labels.backToSignIn}
+          </Button>
+        </Stack>
+      </Paper>
+    );
+  }
 
   return (
     <Paper radius="md" p="xl" withBorder className={className} style={{ width: '100%', ...style }}>
