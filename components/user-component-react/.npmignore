@@ -1,0 +1,40 @@
+# Source files
+src/
+example/
+
+# Development files
+tests/
+__tests__/
+coverage/
+.github/
+.vscode/
+.idea/
+
+# Configuration files
+.eslintrc
+.prettierrc
+jest.config.js
+.env
+.env.*
+
+# Build artifacts
+.git/
+.gitignore
+.DS_Store
+node_modules/
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+*.swp
+*.swo
+*~
+
+# TypeScript
+*.ts
+*.tsx
+!*.d.ts
+tsconfig.json 
