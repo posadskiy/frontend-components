@@ -103,6 +103,22 @@ export class AccountClient {
     await this.request({ path: '/account/verification-email', method: 'POST', signal, body: { linkOrigin } });
   }
 
+  /** Anonymous resend. Always succeeds from the caller's point of view when the server returns 204. */
+  async resendVerificationEmail(
+    email: string,
+    linkOrigin: string,
+    captchaToken?: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.request({
+      path: '/account/verification-email',
+      method: 'POST',
+      auth: false,
+      signal,
+      body: { email, linkOrigin, ...(captchaToken ? { captchaToken } : {}) },
+    });
+  }
+
   async changePassword(currentPassword: string, password: string, signal?: AbortSignal): Promise<void> {
     await this.request({ path: '/account/password', method: 'POST', signal, body: { currentPassword, password } });
   }
