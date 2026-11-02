@@ -66,4 +66,41 @@ export interface UserServiceProps {
   className?: string;
   /** Optional MUI `sx` prop for the root card. Merged with the default layout. */
   sx?: SxProps<Theme>;
+}
+
+export interface SessionsProps {
+  /**
+   * Base URL used when `authApiUrl` is omitted.
+   * For this component that URL is auth-service, unless `authApiUrl` points elsewhere.
+   */
+  apiUrl?: string;
+  /**
+   * Auth-service base URL. Sessions are loaded from `GET /account/sessions`.
+   * When omitted, `apiUrl` is used.
+   */
+  authApiUrl?: string;
+  /** Access token for auth-service. When omitted, the request still sends the browser session cookie. */
+  bearerToken?: string | null;
+  /**
+   * Session id for this browser. When omitted, the access token is checked for a session id,
+   * then a user agent that matches this browser exactly once.
+   */
+  currentSessionId?: string | null;
+  onError?: (error: Error) => void;
+  /** Fired after each session is signed out. `current` is true for this browser. */
+  onRevoked?: (session: { id: string; current: boolean }) => void;
+  className?: string;
+  sx?: SxProps<Theme>;
+}
+
+export interface PasskeysProps {
+  /** Used as the auth-service base URL when `authApiUrl` is omitted. */
+  apiUrl?: string;
+  /** Auth-service base URL. Passkeys load from `GET /account/passkeys`. When omitted, `apiUrl` is used. */
+  authApiUrl?: string;
+  /** Access token for auth-service. When omitted, the request still sends the browser session cookie. */
+  bearerToken?: string | null;
+  onError?: (error: Error) => void;
+  className?: string;
+  sx?: SxProps<Theme>;
 } 

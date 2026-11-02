@@ -11,7 +11,7 @@ npm install user-component-react
 ## Usage
 
 ```tsx
-import { UserService } from 'user-component-react';
+import { Passkeys, Sessions, UserService } from 'user-component-react';
 
 function App() {
   const handleError = (error: Error) => {
@@ -28,16 +28,32 @@ function App() {
   const bearerToken = 'your-jwt-token-here';
 
   return (
-    <UserService
-      apiUrl="https://your-api-url.com"
-      userId="me"
-      bearerToken={bearerToken}
-      onError={handleError}
-      onSuccess={handleSuccess}
-    />
+    <>
+      <UserService
+        apiUrl="https://your-api-url.com"
+        userId="me"
+        bearerToken={bearerToken}
+        onError={handleError}
+        onSuccess={handleSuccess}
+      />
+      <Sessions
+        apiUrl="https://your-api-url.com"
+        authApiUrl="https://your-auth-url.com"
+        bearerToken={bearerToken}
+        onError={handleError}
+      />
+      <Passkeys
+        apiUrl="https://your-api-url.com"
+        authApiUrl="https://your-auth-url.com"
+        bearerToken={bearerToken}
+        onError={handleError}
+      />
+    </>
   );
 }
 ```
+
+`Sessions` and `Passkeys` are the signed-in account cards. Pass the same `bearerToken` you pass to `UserService`, and set `authApiUrl` to auth-service when that host is not `apiUrl`. A session row shows the browser and device, when it signed in, the client IP, and how the account signed in. This browser is labeled **This device** when the access token carries a session id or the user agent matches one session. **Sign out** asks first. **Sign out all other sessions** leaves this device signed in. Passkeys lists each key, asks before removing one, and can register a new key in this browser.
 
 ## Styles
 
@@ -71,6 +87,32 @@ To override the default card layout, pass **`className`** or **`sx`** (MUI's sty
 | allowDelete | boolean | No | Show account deletion inside the expanded details. Defaults to `false`. The email prompt confirms the click; the request is auth-service `POST /account/erase`. |
 | className | string | No | Class name for the root card |
 | sx | SxProps | No | MUI `sx` prop for the root card (merged with defaults) |
+
+### Sessions
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| apiUrl | string | No | Used as the auth-service base URL when `authApiUrl` is omitted |
+| authApiUrl | string | No | Auth-service base URL. Sessions load from `GET /account/sessions` |
+| bearerToken | string \| null | No | Access token. The browser session cookie is still sent |
+| currentSessionId | string \| null | No | Session id for this browser. Overrides token and user-agent detection |
+| onError | (error: Error) => void | No | Sanitized error callback |
+| onRevoked | (session: { id: string; current: boolean }) => void | No | Fired after each session is signed out. `current` is true for this browser |
+| className | string | No | Class name for the root card |
+| sx | SxProps | No | MUI `sx` prop for the root card |
+
+### Passkeys
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| apiUrl | string | No | Used as the auth-service base URL when `authApiUrl` is omitted |
+| authApiUrl | string | No | Auth-service base URL. Passkeys load from `GET /account/passkeys` |
+| bearerToken | string \| null | No | Access token. The browser session cookie is still sent |
+| onError | (error: Error) => void | No | Sanitized error callback |
+| className | string | No | Class name for the root card |
+| sx | SxProps | No | MUI `sx` prop for the root card |
+
+One of `apiUrl` or `authApiUrl` is required for `Sessions` and for `Passkeys`.
 
 ## Features
 

@@ -1,4 +1,4 @@
-import { UserService } from 'user-component-react';
+import { Passkeys, Sessions, UserService } from 'user-component-react';
 
 function App() {
   const handleError = (error: Error) => {
@@ -25,6 +25,18 @@ function App() {
         bearerToken={bearerToken}
         onError={handleError}
         onSuccess={handleSuccess}
+      />
+      <Sessions
+        apiUrl={apiUrl}
+        authApiUrl={authApiUrl || 'http://localhost:8100'}
+        bearerToken={bearerToken}
+        onError={handleError}
+      />
+      <Passkeys
+        apiUrl={apiUrl}
+        authApiUrl={authApiUrl || 'http://localhost:8100'}
+        bearerToken={bearerToken}
+        onError={handleError}
       />
     </div>
   );
