@@ -58,6 +58,37 @@ function App() {
 
 Password login posts `{ email, password, linkOrigin }` to `apiUrl` with credentials, and expects `{ access_token, expires_in }`. Hold `access_token` in memory. auth-service keeps the refresh token in an httpOnly cookie for browser requests and omits `refresh_token` from the JSON. This package sends `withCredentials` so the browser stores that cookie, and it drops `refresh_token` if a response still contains one. Unverified accounts cannot sign in. Mount `VerifyEmail` on the confirmation link (`?token=`) and `ConfirmEmailChange` on the email-change link. Wrap the application in `AccountProvider` from `@posadskiy/account-client` and pass that client as `accountClient` on `Login` and `OAuthCallback` when those screens should adopt the session. Signed-in account cards, including sessions and passkeys, live in `user-component-react`.
 
+### Passkeys
+
+Passkey sign-in and creation run only when `Login` receives `accountClient`. Without it, the form stays password-only.
+
+```tsx
+import { AccountClient, AccountProvider } from '@posadskiy/account-client';
+import { Login } from 'auth-component-react';
+
+const accountClient = new AccountClient({ authUrl: 'http://localhost:8100' });
+
+<AccountProvider client={accountClient}>
+  <Login
+    apiUrl="http://localhost:8100/login"
+    accountClient={accountClient}
+    onSuccess={(response) => {
+      setAccessToken(response.access_token);
+    }}
+  />
+</AccountProvider>
+```
+
+With that client:
+
+- The email field uses `autocomplete="username webauthn"`. On load, login starts a conditional WebAuthn get so a stored passkey can appear in the browser autofill list next to saved passwords.
+- A **Sign in with a passkey** button runs a modal ceremony for users who pick a passkey explicitly.
+- After a successful password login, if the account has no passkeys yet, login tries silent conditional create. When the browser and password manager allow it, a passkey is registered without an in-app dialog and `onSuccess` runs.
+- If silent create does not run, login shows **Save a passkey?** with Create / Not now before calling `onSuccess`.
+- Account settings still use `Passkeys` from `user-component-react` to list, name, add, and remove passkeys.
+
+Override the offer copy with `labels.passkeyOfferTitle`, `passkeyOfferBody`, `passkeyOfferCreate`, and `passkeyOfferDismiss`.
+
 Pass `turnstileSiteKey` to render a Cloudflare Turnstile widget above the submit button. Signup and password reset send its token as `captchaToken` on every submit. Login sends it only after auth-service answers `Captcha is required`. `captcha` and `getCaptchaToken` still work when you supply your own widget. A site key replaces both.
 
 Registration posts `{ email, password, linkOrigin, locale, timeZone }` to `apiUrl`. `locale` and `timeZone` are taken from the browser and stored only when the account is created. OAuth sends the same values as `locale` and `time_zone` on the authorize request. `linkOrigin` is the site origin only, such as `https://grammarbar.com`, with no path, query, hash, or custom scheme. It defaults to `window.location.origin`. Pass `linkOrigin` when the public origin differs from the page origin. The password must be 10–72 characters and must not match the email. A 201 response with `{ emailVerified: false }` means the account was created. A mail failure still creates the account, so a 201 is success.

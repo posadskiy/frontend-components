@@ -9,6 +9,7 @@ import { resolveProviders } from '../oauth/resolveProviders';
 import type { AuthResponse, LoginProps, RegisterProps, RegisterResponse } from '../types';
 import { isAuthResponse, isEmailAddress, isRegisterResponse, passwordIssue, withoutRefreshToken } from '../validate';
 import { useTurnstile } from '../captcha/useTurnstile';
+import { useLoginPasskeys } from '../passkey/useLoginPasskeys';
 import { OAuthButtons } from './OAuthButtons';
 import { useOAuthAction } from './useOAuthAction';
 
@@ -107,6 +108,15 @@ export function CredentialsForm(props: CredentialsFormProps) {
   const showRegisterLink = mode === 'login' ? props.showRegisterLink !== false : false;
   const showLoginLink = mode === 'register' ? props.showLoginLink !== false : false;
   const onForgotPassword = props.mode === 'login' ? props.onForgotPassword : undefined;
+  const loginPasskeys = useLoginPasskeys({
+    enabled: mode === 'login' && Boolean(account),
+    client: account,
+    linkOrigin: linkOriginProp,
+    onSuccess: props.mode === 'login' ? props.onSuccess : undefined,
+    onError,
+    signInFailed: labels.passkeySignInFailed,
+    createFailed: labels.passkeyCreateFailed,
+  });
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -147,6 +157,7 @@ export function CredentialsForm(props: CredentialsFormProps) {
     }
 
     setSubmitting(true);
+    if (props.mode === 'login') loginPasskeys.beginPasswordAttempt();
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -185,7 +196,7 @@ export function CredentialsForm(props: CredentialsFormProps) {
           session.expires_in,
           record.user_id ?? session.userId ?? null,
         );
-        props.onSuccess?.(session);
+        await loginPasskeys.afterPasswordLogin(session);
       } else {
         if (!authApi?.register && !apiUrl) {
           throw new Error('Either apiUrl or authApi.register must be provided');
@@ -219,6 +230,7 @@ export function CredentialsForm(props: CredentialsFormProps) {
       }
     } catch (caught) {
       if (!mountedRef.current) return;
+      if (props.mode === 'login') loginPasskeys.passwordAttemptFailed();
       if (axios.isCancel(caught) || (axios.isAxiosError(caught) && caught.code === 'ERR_CANCELED')) return;
       const mapped = mapAuthError(caught, mode, labels);
       if (mapped.field === 'email') setEmailError(mapped.message);
@@ -229,6 +241,15 @@ export function CredentialsForm(props: CredentialsFormProps) {
     }
   };
 
+  const signInWithPasskey = async () => {
+    if (busy) return;
+    setFormError(null);
+    setSubmitting(true);
+    const result = await loginPasskeys.signInWithPasskey();
+    if (!mountedRef.current) return;
+    if (result === 'failed') setFormError(labels.passkeySignInFailed);
+    setSubmitting(false);
+  };
 
   const leaveVerifyPending = () => {
     const pending = pendingVerify;
@@ -300,6 +321,38 @@ export function CredentialsForm(props: CredentialsFormProps) {
     );
   }
 
+  if (loginPasskeys.prompt) {
+    return (
+      <Paper radius="md" p="xl" withBorder className={className} style={{ width: '100%', ...style }}>
+        <Title order={2} mb="sm">
+          {labels.passkeyOfferTitle}
+        </Title>
+        <Text c="dimmed" mb="xl">
+          {labels.passkeyOfferBody}
+        </Text>
+        <Stack>
+          {loginPasskeys.promptError && (
+            <Alert color="red" role="alert">
+              {loginPasskeys.promptError}
+            </Alert>
+          )}
+          <Button type="button" loading={loginPasskeys.promptPending} fullWidth onClick={() => void loginPasskeys.createFromPrompt()}>
+            {labels.passkeyOfferCreate}
+          </Button>
+          <Button
+            type="button"
+            variant="subtle"
+            fullWidth
+            disabled={loginPasskeys.promptPending}
+            onClick={loginPasskeys.dismissPrompt}
+          >
+            {labels.passkeyOfferDismiss}
+          </Button>
+        </Stack>
+      </Paper>
+    );
+  }
+
   return (
     <Paper radius="md" p="xl" withBorder className={className} style={{ width: '100%', ...style }}>
       <Title ta="center" mb="md">
@@ -348,11 +401,17 @@ export function CredentialsForm(props: CredentialsFormProps) {
             </Alert>
           )}
 
+          {loginPasskeys.supported && (
+            <Button type="button" variant="default" fullWidth disabled={busy} onClick={() => void signInWithPasskey()}>
+              {labels.signInWithPasskey}
+            </Button>
+          )}
+
           <TextInput
             required
             name="email"
             type="email"
-            autoComplete="email"
+            autoComplete={loginPasskeys.emailAutoComplete}
             label={labels.email}
             placeholder={labels.emailPlaceholder}
             value={email}

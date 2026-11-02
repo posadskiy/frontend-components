@@ -13,6 +13,13 @@ export interface AuthLabels {
   checkEmailBody: string;
   checkEmailResend: string;
   checkEmailResent: string;
+  signInWithPasskey: string;
+  passkeyOfferTitle: string;
+  passkeyOfferBody: string;
+  passkeyOfferCreate: string;
+  passkeyOfferDismiss: string;
+  passkeySignInFailed: string;
+  passkeyCreateFailed: string;
   orContinueWithEmail: string;
   confirmPassword: string;
   passwordTooShort: string;
@@ -74,6 +81,13 @@ export const defaultLabels: AuthLabels = {
   checkEmailBody: 'We sent a confirmation link to {email}. Open it to activate your account, then sign in.',
   checkEmailResend: 'Resend confirmation email',
   checkEmailResent: 'If this account needs confirmation, we sent another link.',
+  signInWithPasskey: 'Sign in with a passkey',
+  passkeyOfferTitle: 'Save a passkey?',
+  passkeyOfferBody: 'Next time you can sign in with this device, without a password.',
+  passkeyOfferCreate: 'Create a passkey',
+  passkeyOfferDismiss: 'Not now',
+  passkeySignInFailed: 'Passkey sign-in did not finish. Try again or use your password.',
+  passkeyCreateFailed: 'Unable to save a passkey.',
   orContinueWithEmail: 'Or continue with email',
   confirmPassword: 'Confirm password',
   passwordTooShort: 'Password must be 10–72 characters.',
