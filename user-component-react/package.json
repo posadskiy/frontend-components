@@ -1,6 +1,6 @@
 {
   "name": "user-component-react",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "React component for user information management",
   "type": "module",
   "main": "./dist/index.js",
@@ -45,7 +45,7 @@
     "react-dom": "^19.2.0"
   },
   "dependencies": {
-    "@posadskiy/account-client": "1.1.0",
+    "@posadskiy/account-client": "1.2.0",
     "axios": "^1.20.0"
   },
   "devDependencies": {
