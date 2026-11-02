@@ -190,12 +190,9 @@ export function CredentialsForm(props: CredentialsFormProps) {
         if (!mountedRef.current) return;
         if (!isAuthResponse(response)) throw new Error(labels.genericError);
         const session = withoutRefreshToken(response);
-        const record = response as AuthResponse & { user_id?: string };
-        account?.session.adopt(
-          session.access_token,
-          session.expires_in,
-          record.user_id ?? session.userId ?? null,
-        );
+        // Saves refresh_token when the account client has a native token store.
+        await account?.acceptTokens(response as unknown as Record<string, unknown>);
+        if (!mountedRef.current) return;
         await loginPasskeys.afterPasswordLogin(session);
       } else {
         if (!authApi?.register && !apiUrl) {

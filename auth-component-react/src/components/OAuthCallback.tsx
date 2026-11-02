@@ -6,6 +6,7 @@ import { resolveLabels, type AuthLabels } from '../labels';
 import { navigation, safeAppPath, stripOAuthQuery } from '../navigation';
 import { subscribeFinalize } from '../oauth/finalize';
 import type { OAuthTokenResponse } from '../types';
+import { withoutRefreshToken } from '../validate';
 import type { AccountClient } from '@posadskiy/account-client';
 
 export interface OAuthCallbackProps {
@@ -65,29 +66,31 @@ export function OAuthCallback({
     let active = true;
     const { promise, unsubscribe } = subscribeFinalize(oauthApiUrl, code);
 
-    promise.then(
-      (data) => {
-        if (!active) return;
-        setStatus('success');
-        setMessage(labelsRef.current.callbackSuccessMessage);
-        accountRef.current?.session.adopt(
-          data.access_token,
-          typeof data.expires_in === 'number' ? data.expires_in : null,
-          data.user_id,
-        );
-        onSuccessRef.current(data);
-        navigation.replacePath(safeAppPath(returnPathRef.current) ?? stripOAuthQuery(window.location.href));
-      },
-      (caught: unknown) => {
-        if (!active) return;
-        if (axios.isCancel(caught) || (axios.isAxiosError(caught) && caught.code === 'ERR_CANCELED')) return;
-        const mapped = mapAuthError(caught, 'oauth', labelsRef.current);
-        setStatus('error');
-        setMessage(mapped.message);
-        navigation.replacePath(stripOAuthQuery(window.location.href));
-        onErrorRef.current(mapped.error);
-      },
-    );
+    promise
+      .then(async (raw) => {
+        // Saves refresh_token when the account client has a native token store.
+        if (active) await accountRef.current?.acceptTokens(raw as unknown as Record<string, unknown>);
+        return raw;
+      })
+      .then(
+        (raw) => {
+          if (!active) return;
+          const data = withoutRefreshToken(raw);
+          setStatus('success');
+          setMessage(labelsRef.current.callbackSuccessMessage);
+          onSuccessRef.current(data);
+          navigation.replacePath(safeAppPath(returnPathRef.current) ?? stripOAuthQuery(window.location.href));
+        },
+        (caught: unknown) => {
+          if (!active) return;
+          if (axios.isCancel(caught) || (axios.isAxiosError(caught) && caught.code === 'ERR_CANCELED')) return;
+          const mapped = mapAuthError(caught, 'oauth', labelsRef.current);
+          setStatus('error');
+          setMessage(mapped.message);
+          navigation.replacePath(stripOAuthQuery(window.location.href));
+          onErrorRef.current(mapped.error);
+        },
+      );
 
     return () => {
       active = false;

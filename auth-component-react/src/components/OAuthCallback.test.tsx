@@ -72,6 +72,22 @@ describe('OAuthCallback', () => {
     expect(window.location.search).not.toContain('code=');
   });
 
+  it('hands the full token response to the account client and strips it for onSuccess', async () => {
+    post.mockResolvedValue({
+      data: { access_token: 'access', refresh_token: 'refresh-secret', expires_in: 900, user_id: '7' },
+    });
+    const acceptTokens = vi.fn().mockResolvedValue({ accessToken: 'access', expiresIn: 900, userId: '7' });
+    const accountClient = { acceptTokens } as unknown as React.ComponentProps<typeof OAuthCallback>['accountClient'];
+
+    const { onSuccess } = renderCallback('?code=native', { accountClient });
+
+    expect(await screen.findByText('Sign-in successful!')).toBeInTheDocument();
+    expect(acceptTokens).toHaveBeenCalledWith(
+      expect.objectContaining({ access_token: 'access', refresh_token: 'refresh-secret' }),
+    );
+    expect(onSuccess.mock.calls[0]?.[0]).not.toHaveProperty('refresh_token');
+  });
+
   it('removes the code from the url when finalize fails', async () => {
     post.mockRejectedValue({
       isAxiosError: true,

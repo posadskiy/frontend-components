@@ -42,11 +42,27 @@ export interface PasskeyCeremony {
   publicKey: Record<string, unknown>;
 }
 
+/**
+ * Where a native app keeps the refresh token, such as the iOS Keychain.
+ * auth-service sends `refresh_token` in JSON only to requests without `Sec-Fetch-*` headers,
+ * which is what a Capacitor app with native HTTP looks like.
+ */
+export interface RefreshTokenStore {
+  get(): Promise<string | null> | string | null;
+  set(token: string | null): Promise<void> | void;
+}
+
 export interface AccountClientOptions {
   authUrl: string;
   userUrl?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Native apps only. When set, the refresh token from JSON responses is saved here and sent
+   * in the body of `/oauth/token` and `/logout`. Leave unset in a browser: auth-service rejects
+   * a body token there and uses its httpOnly cookie instead.
+   */
+  refreshTokenStore?: RefreshTokenStore;
 }
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

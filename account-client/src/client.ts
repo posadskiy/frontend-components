@@ -6,6 +6,7 @@ import type {
   AccountPasskey,
   AccountSessionInfo,
   PasskeyCeremony,
+  RefreshTokenStore,
   RequestSpec,
   TokenSet,
   UserProfile,
@@ -228,7 +229,15 @@ export class AccountClient {
     });
   }
 
-  /** Uses the access token when it is still fresh. Otherwise refreshes through the cookie. */
+  /**
+   * Takes a token response that was fetched outside this client, such as an OAuth finalize call.
+   * Keeps the access token in memory and, with a `refreshTokenStore`, saves the refresh token.
+   */
+  acceptTokens(body: Record<string, unknown>): Promise<TokenSet> {
+    return this.adopt(body);
+  }
+
+  /** Uses the access token when it is still fresh. Otherwise refreshes the session. */
   async getAccessToken(): Promise<string | null> {
     const current = this.session.snapshot();
     if (current.accessToken && !expiring(current.expiresAt)) return current.accessToken;
@@ -241,7 +250,8 @@ export class AccountClient {
   }
 
   /**
-   * Asks auth-service to rotate the refresh cookie. Safe for several callers at once:
+   * Asks auth-service to rotate the refresh token (the cookie, or the stored token in a native app).
+   * Safe for several callers at once:
    * they share one request.
    */
   refresh(): Promise<TokenSet> {
@@ -267,12 +277,17 @@ export class AccountClient {
   }
 
   async logout(signal?: AbortSignal): Promise<void> {
+    const store = this.options.refreshTokenStore;
     try {
-      await this.request({ path: '/logout', method: 'POST', auth: false, signal, body: {} });
+      const token = store ? await readStored(store) : null;
+      if (!store || token) {
+        await this.request({ path: '/logout', method: 'POST', auth: false, signal, body: token ? { token } : {} });
+      }
     } catch (error) {
       if (isAbortError(error)) throw error;
     } finally {
       this.session.clear();
+      if (store) await writeStored(store, null);
     }
   }
 
@@ -289,24 +304,36 @@ export class AccountClient {
   }
 
   private async performRefresh(): Promise<TokenSet> {
-    const response = await this.send({
-      path: '/oauth/token',
-      method: 'POST',
-      auth: false,
-      body: { grant_type: 'refresh_token' },
-    });
+    const store = this.options.refreshTokenStore;
+    let body: Record<string, unknown> = { grant_type: 'refresh_token' };
+    if (store) {
+      const stored = await readStored(store);
+      if (!stored) {
+        this.session.clear();
+        throw new AccountHttpError(401, { message: 'No refresh token is stored.' });
+      }
+      body = { ...body, refresh_token: stored };
+    }
+    const response = await this.send({ path: '/oauth/token', method: 'POST', auth: false, body });
     if (!response.ok) {
-      if (response.status === 400 || response.status === 401) this.session.clear();
+      if (response.status === 400 || response.status === 401) {
+        this.session.clear();
+        if (store) await writeStored(store, null);
+      }
       throw await httpError(response);
     }
     return this.adopt(await response.json());
   }
 
-  private adopt(body: Record<string, unknown>): TokenSet {
+  private async adopt(body: Record<string, unknown>): Promise<TokenSet> {
     const accessToken = text(body.access_token);
     if (!accessToken) throw new AccountHttpError(200, body);
     const expiresIn = typeof body.expires_in === 'number' ? body.expires_in : 0;
     const userId = text(body.user_id) ?? text(body.userId);
+    const refreshToken = text(body.refresh_token);
+    const store = this.options.refreshTokenStore;
+    // Save before publishing the session, so a quit right after sign-in still keeps it.
+    if (store && refreshToken) await writeStored(store, refreshToken);
     this.session.adopt(accessToken, typeof body.expires_in === 'number' ? body.expires_in : null, userId);
     return { accessToken, expiresIn, userId };
   }
@@ -335,6 +362,22 @@ export class AccountClient {
       }
       throw error;
     }
+  }
+}
+
+async function readStored(store: RefreshTokenStore): Promise<string | null> {
+  try {
+    return text(await store.get());
+  } catch {
+    return null;
+  }
+}
+
+async function writeStored(store: RefreshTokenStore, token: string | null): Promise<void> {
+  try {
+    await store.set(token);
+  } catch {
+    // A failed write only costs the next app launch a sign-in.
   }
 }
 

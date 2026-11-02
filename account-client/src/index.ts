@@ -19,6 +19,7 @@ export type {
   AccountPasskey,
   AccountSessionInfo,
   PasskeyCeremony,
+  RefreshTokenStore,
   RequestSpec,
   TokenSet,
   UserProfile,

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { OAuthTokenResponse } from '../types';
-import { isOAuthTokenResponse, withoutRefreshToken } from '../validate';
+import { isOAuthTokenResponse } from '../validate';
 import { clearPkceVerifier, readPkceVerifier } from './pkce';
 
 type Inflight = {
@@ -32,7 +32,9 @@ export function subscribeFinalize(oauthApiUrl: string, code: string): {
         if (!isOAuthTokenResponse(response.data)) {
           throw new Error('The auth service returned an unexpected response.');
         }
-        return withoutRefreshToken(response.data);
+        // A native app receives refresh_token here. OAuthCallback hands it to the account
+        // client and strips it before onSuccess.
+        return response.data;
       });
 
     entry = { controller, promise, subscribers: 0 };

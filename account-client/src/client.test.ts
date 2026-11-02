@@ -96,4 +96,103 @@ describe('AccountClient', () => {
     expect(init.credentials).toBe('include');
     expect(init.body).toBe('{}');
   });
+
+  describe('with a refreshTokenStore (native app)', () => {
+    function memoryStore(initial: string | null = null) {
+      let value = initial;
+      return {
+        get: vi.fn(async () => value),
+        set: vi.fn(async (next: string | null) => {
+          value = next;
+        }),
+        peek: () => value,
+      };
+    }
+
+    function nativeClient(fetchImpl: typeof fetch, store: ReturnType<typeof memoryStore>) {
+      return new AccountClient({ authUrl: 'https://api.example/auth', fetch: fetchImpl, refreshTokenStore: store });
+    }
+
+    it('saves the refresh token from login', async () => {
+      const store = memoryStore();
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({ access_token: 'access', refresh_token: 'r1', expires_in: 900, user_id: '4' }),
+      );
+      const client = nativeClient(fetchImpl, store);
+
+      await client.login({ email: 'ada@example.com', password: 'correcthorse' });
+
+      expect(store.peek()).toBe('r1');
+      expect(JSON.stringify(client.session.snapshot())).not.toContain('r1');
+    });
+
+    it('refreshes a cold start with the stored token and saves the rotated one', async () => {
+      const store = memoryStore('r1');
+      const fetchImpl = vi.fn(async () =>
+        jsonResponse({ access_token: 'fresh', refresh_token: 'r2', expires_in: 900, user_id: '4' }),
+      );
+      const client = nativeClient(fetchImpl, store);
+
+      await client.ensureFresh();
+
+      expect(client.session.snapshot().accessToken).toBe('fresh');
+      expect(store.peek()).toBe('r2');
+      const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.example/auth/oauth/token');
+      expect(init.body).toBe(JSON.stringify({ grant_type: 'refresh_token', refresh_token: 'r1' }));
+    });
+
+    it('does not call auth-service when nothing is stored', async () => {
+      const store = memoryStore();
+      const fetchImpl = vi.fn();
+      const client = nativeClient(fetchImpl as unknown as typeof fetch, store);
+
+      await client.ensureFresh();
+
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(client.session.snapshot().accessToken).toBeNull();
+    });
+
+    it('forgets a rejected refresh token', async () => {
+      const store = memoryStore('revoked');
+      const fetchImpl = vi.fn(async () => jsonResponse({ detail: 'invalid' }, 401));
+      const client = nativeClient(fetchImpl, store);
+
+      await expect(client.refresh()).rejects.toBeInstanceOf(AccountHttpError);
+      expect(store.peek()).toBeNull();
+    });
+
+    it('keeps the stored token when auth-service cannot be reached', async () => {
+      const store = memoryStore('r1');
+      const fetchImpl = vi.fn(async () => jsonResponse({ detail: 'down' }, 503));
+      const client = nativeClient(fetchImpl, store);
+
+      await client.ensureFresh();
+
+      expect(store.peek()).toBe('r1');
+    });
+
+    it('revokes the stored token on logout and clears it', async () => {
+      const store = memoryStore('r1');
+      const fetchImpl = vi.fn(async () => new Response(null, { status: 200 }));
+      const client = nativeClient(fetchImpl, store);
+
+      await client.logout();
+
+      const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('https://api.example/auth/logout');
+      expect(init.body).toBe(JSON.stringify({ token: 'r1' }));
+      expect(store.peek()).toBeNull();
+    });
+
+    it('accepts tokens fetched elsewhere, such as an OAuth finalize call', async () => {
+      const store = memoryStore();
+      const client = nativeClient(vi.fn() as unknown as typeof fetch, store);
+
+      await client.acceptTokens({ access_token: 'access', refresh_token: 'r1', expires_in: 900, user_id: '4' });
+
+      expect(client.session.snapshot()).toMatchObject({ accessToken: 'access', userId: '4' });
+      expect(store.peek()).toBe('r1');
+    });
+  });
 });
